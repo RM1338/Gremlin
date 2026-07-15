@@ -1,0 +1,19 @@
+# secrets & local env
+.env
+
+# python
+.venv/
+__pycache__/
+*.pyc
+
+# run artifacts (screenshots, traces, reports)
+runs/
+
+# frontend build output
+frontend/node_modules/
+frontend/dist/
+
+# editor / tooling
+.claude/settings.local.json
+.DS_Store
+*.log
