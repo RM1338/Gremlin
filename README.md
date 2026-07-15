@@ -1,12 +1,8 @@
 <div align="center">
 
-# Gremlin
+<img src="docs/media/banner.gif" alt="Gremlin — autonomous UI testing for Flutter" width="820" />
 
 **An autonomous agent that plays a Flutter app like a confused user, files a reproducible bug report every time the framework screams, and — opt-in — patches the bug and replays the exact taps to prove it is gone.**
-
-<img src="docs/media/detect-and-fix.gif" alt="Gremlin detects a layout overflow and verifies a fix" width="300" />
-
-_A real RenderFlex overflow, detected on a physical device, then fixed and re-verified by replaying the exact taps that caused it._
 
 </div>
 
@@ -36,11 +32,6 @@ screenshot  vision +   tap/type  read the │
 ```
 
 Exploration is **coverage-driven**: Gremlin tracks every control it has tapped on each screen and works through the untapped ones, so it does not loop on the same button, and it stops early once a screen is exhausted.
-
-| Detected | Fixed |
-|:---:|:---:|
-| <img src="docs/media/overflow-detected.png" width="240" alt="overflow detected" /> | <img src="docs/media/overflow-fixed.png" width="240" alt="overflow fixed" /> |
-| The framework prints `A RenderFlex overflowed by 366 pixels`. | The agent's patch reflows the row; replaying the same tap is silent. |
 
 ## The three output tiers
 
