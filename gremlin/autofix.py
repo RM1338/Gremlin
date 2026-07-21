@@ -53,9 +53,9 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--run", default="runs/latest", help="run directory with trace.json")
     ap.add_argument("--project", default=None,
-                    help="path to the Flutter project whose source the fixer may edit "
+                    help="path to the app project whose source the fixer may edit "
                          "(must match the app the run explored); defaults to the built-in target")
-    ap.add_argument("--no-rebuild", action="store_true", help="skip flutter rebuild (debug only)")
+    ap.add_argument("--no-rebuild", action="store_true", help="skip the rebuild (debug only)")
     ap.add_argument("--kind", default=None,
                     help="only attempt bugs of this signal kind (e.g. renderflex-overflow)")
     ap.add_argument("--backend", default=None,
@@ -67,9 +67,10 @@ def main() -> None:
     if args.project:
         t = target_for_project(Path(args.project))
         if t is None:
-            sys.exit(f"'{args.project}' is not a Flutter project (no pubspec with `sdk: flutter`).")
+            sys.exit(f"'{args.project}' is not an app project Gremlin recognises "
+                     f"(no Flutter pubspec, no React Native package.json + android/).")
         cfg = t.to_config()
-        print(f"fix target: {t.name}  [{t.package}]  src={t.source_root}")
+        print(f"fix target: {t.name}  [{t.package}]  {t.toolkit.label}  src={t.source_root}")
     else:
         cfg = Config()
     cfg.run_dir = Path(args.run)
@@ -98,10 +99,14 @@ def main() -> None:
         return
 
     print(f"attempting Tier 2 autofix for {len(bugs)} bug(s) via backend '{backend}'...\n")
+    # Tier 1 reports back the portable prompt; write them too so the ladder is
+    # complete even on an autofix run.
+    write_reports(bugs, cfg)
     try:
-        for bug in bugs:
+        for i, bug in enumerate(bugs, 1):
             outcome = fix_one(cfg, bug, baseline_keys,
                               do_rebuild=not args.no_rebuild, backend=backend)
+            _persist_outcome(cfg.run_dir, i, outcome)
             mark = "VERIFIED ✓" if outcome.verified else "reverted"
             print(f"[{mark}] {bug.title()}  (branch {outcome.branch})")
             for g in outcome.gates:
@@ -112,6 +117,21 @@ def main() -> None:
             print(f"    {outcome.note}\n")
     except DirtyTreeError as e:
         print(f"refusing: {e}")
+
+
+def _persist_outcome(run_dir: Path, index: int, outcome) -> None:
+    """Write a bug's Tier-2 result to ``reports/bug_NNN.fix.json`` so the dashboard
+    can render the gate ladder for a real autofix run."""
+    reports = run_dir / "reports"
+    reports.mkdir(parents=True, exist_ok=True)
+    payload = {
+        "verified": outcome.verified,
+        "branch": outcome.branch,
+        "note": outcome.note,
+        "guard_violations": list(outcome.guard_violations),
+        "gates": [{"name": g.name, "passed": g.passed, "detail": g.detail} for g in outcome.gates],
+    }
+    (reports / f"bug_{index:03d}.fix.json").write_text(json.dumps(payload, indent=2))
 
 
 if __name__ == "__main__":
