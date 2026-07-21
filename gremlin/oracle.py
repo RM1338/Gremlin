@@ -20,36 +20,12 @@ from collections import deque
 from dataclasses import dataclass, field
 
 from .device import Device
-
-
-# Severity ranks so the dashboard and dedup can order findings.
-CRASH = "crash"
-LAYOUT = "layout"
-HANG = "hang"
-
-# Each signal: (severity, kind, compiled pattern). Order matters only for the
-# first-match-wins scan within a single line.
-_SIGNAL_SPECS: list[tuple[str, str, re.Pattern]] = [
-    (CRASH, "native-crash", re.compile(r"FATAL EXCEPTION")),
-    (CRASH, "dart-exception", re.compile(r"Unhandled Exception", re.IGNORECASE)),
-    (LAYOUT, "renderflex-overflow", re.compile(r"A RenderFlex overflowed by", re.IGNORECASE)),
-    # Flutter prints this as an uppercase banner: "EXCEPTION CAUGHT BY RENDERING LIBRARY".
-    (LAYOUT, "render-error", re.compile(r"Exception caught by rendering library", re.IGNORECASE)),
-    (HANG, "jank", re.compile(r"Skipped \d+ frames")),
-    # Gremlin probe marker (see gremlin_probe.dart). Modern Flutter (Impeller)
-    # doesn't reliably print framework/Dart errors to logcat, so an app under
-    # test can opt in and forward them here. A marker line that also contains a
-    # specific phrase above (e.g. an overflow) is already classified by that
-    # phrase — this catch-all only fires for errors none of those matched.
-    (CRASH, "dart-exception", re.compile(r"GREMLIN_BUG")),
-]
-
-# In a debug build the framework names the offending widget's source location.
-# e.g. "... library_screen.dart:42:15" or "package:scribe/screens/x.dart:10".
-_DART_LOCATION_RE = re.compile(r"([\w./]+\.dart):(\d+)(?::(\d+))?")
+from . import platforms
+from .platforms import CRASH, LAYOUT, HANG  # noqa: F401  (re-exported)
 
 # How many following log lines to scan for the source location after a match —
-# Flutter prints the "relevant error-causing widget" a few lines below the error.
+# a framework prints the "relevant error-causing widget", or the JS stack, a few
+# lines below the error itself.
 _CONTEXT_AHEAD = 20
 _CONTEXT_BEHIND = 2
 
@@ -60,8 +36,18 @@ class Signal:
     kind: str
     line: str  # the matched log line
     context: list[str] = field(default_factory=list)  # surrounding lines
-    dart_file: str | None = None
-    dart_line: int | None = None
+    source_file: str | None = None
+    source_line: int | None = None
+
+    # The oracle used to be Flutter-only and named these `dart_*`. Reports and
+    # run artifacts on disk still use those keys, so they stay readable here.
+    @property
+    def dart_file(self) -> str | None:
+        return self.source_file
+
+    @property
+    def dart_line(self) -> int | None:
+        return self.source_line
 
     def key(self) -> str:
         """Dedup key: same signal kind at the same source location is one bug.
@@ -70,21 +56,26 @@ class Signal:
         with digits stripped, so "Skipped 30 frames" and "Skipped 47 frames"
         collapse into a single finding instead of inflating the bug count.
         """
-        if self.dart_file:
-            loc = f"{self.dart_file}:{self.dart_line}"
+        if self.source_file:
+            loc = f"{self.source_file}:{self.source_line}"
         else:
             loc = re.sub(r"\d+", "N", self.line)[:80]
         return f"{self.kind}|{loc}"
 
     def summary(self) -> str:
-        loc = f" ({self.dart_file}:{self.dart_line})" if self.dart_file else ""
+        loc = f" ({self.source_file}:{self.source_line})" if self.source_file else ""
         return f"[{self.severity}] {self.kind}{loc}"
 
 
 class Oracle:
-    def __init__(self, device: Device, package: str | None = None) -> None:
+    def __init__(self, device: Device, package: str | None = None,
+                 platform: "platforms.Platform | str | None" = None) -> None:
         self.device = device
         self.package = package  # scope logcat to this app's PID, so other apps' noise is ignored
+        # Which vocabulary of failure to match. A string is a platform id from a
+        # Config; None keeps the historical Flutter default.
+        self.platform = (platform if isinstance(platform, platforms.Platform)
+                         else platforms.by_name(platform))
         self._proc: subprocess.Popen | None = None
         self._thread: threading.Thread | None = None
         self._lines: deque[str] = deque(maxlen=8000)
@@ -142,30 +133,38 @@ class Oracle:
 
         signals: list[Signal] = []
         for i, line in enumerate(new_lines):
-            for severity, kind, pattern in _SIGNAL_SPECS:
-                if pattern.search(line):
-                    ahead = new_lines[i : i + _CONTEXT_AHEAD]
-                    behind = new_lines[max(0, i - _CONTEXT_BEHIND) : i]
-                    dart_file, dart_line = self._extract_location(ahead)
-                    signals.append(
-                        Signal(
-                            severity=severity,
-                            kind=kind,
-                            line=line,
-                            context=behind + ahead,
-                            dart_file=dart_file,
-                            dart_line=dart_line,
-                        )
-                    )
-                    break  # one signal per line
+            match = self.platform.classify(line)  # first match wins, one per line
+            if match is None:
+                continue
+            ahead = new_lines[i : i + _CONTEXT_AHEAD]
+            behind = new_lines[max(0, i - _CONTEXT_BEHIND) : i]
+            source_file, source_line = self._extract_location(ahead)
+            signals.append(
+                Signal(
+                    severity=match.severity,
+                    kind=match.kind,
+                    line=line,
+                    context=behind + ahead,
+                    source_file=source_file,
+                    source_line=source_line,
+                )
+            )
         return signals
 
-    @staticmethod
-    def _extract_location(lines: list[str]) -> tuple[str | None, int | None]:
+    def _extract_location(self, lines: list[str]) -> tuple[str | None, int | None]:
+        """First source location in these lines that points at real app code.
+
+        React Native stacks are full of frames inside `node_modules` and inside
+        the generated Metro bundle; pointing a report at those would be worse
+        than pointing it nowhere, so they are skipped rather than accepted as a
+        first match.
+        """
         for ln in lines:
-            m = _DART_LOCATION_RE.search(ln)
-            if m:
-                return m.group(1), int(m.group(2))
+            for m in self.platform.location_re.finditer(ln):
+                raw = m.group(1)
+                if platforms.is_ignored_source(raw):
+                    continue
+                return self.platform.normalize_source_path(raw), int(m.group(2))
         return None, None
 
     def stop(self) -> None:

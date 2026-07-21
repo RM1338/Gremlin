@@ -48,7 +48,7 @@ def replay(cfg: Config, trace: list[Action], settle: float = 0.7) -> ReplayResul
     dev.prepare()
     dev.relaunch(cfg.package, cfg.activity)
 
-    oracle = Oracle(dev, package=cfg.package)
+    oracle = Oracle(dev, package=cfg.package, platform=cfg.platform)
     oracle.start()
     time.sleep(1.0)
     oracle.drain()  # discard launch noise

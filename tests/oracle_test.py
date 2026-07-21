@@ -1,5 +1,6 @@
-"""Verify the oracle: (1) matching logic against known Flutter output, and
-(2) a live logcat stream while we tap through the app under test.
+"""Verify the oracle: (1) matching logic against known framework output for
+every supported toolkit, and (2) a live logcat stream while we tap through the
+app under test.
 
 Run from the project root:  python -m tests.oracle_test   (or python tests/oracle_test.py)
 """
@@ -12,36 +13,84 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from gremlin.config import Config
 from gremlin.device import Device
-from gremlin.oracle import Oracle, _SIGNAL_SPECS, _DART_LOCATION_RE
+from gremlin.oracle import Oracle
+from gremlin import platforms
 
 # ---- (1) offline matching check --------------------------------------------
-# Real-shaped Flutter log excerpts, one per signal.
+# Real-shaped log excerpts, one per signal, per toolkit.
 SAMPLES = {
-    "native-crash": "E/AndroidRuntime(12043): FATAL EXCEPTION: main",
-    "dart-exception": "E/flutter (12043): [ERROR:flutter/.../dart_error.cc] Unhandled Exception: Null check operator used on a null value",
-    "renderflex-overflow": "I/flutter (12043): A RenderFlex overflowed by 42 pixels on the right.",
-    "render-error": "I/flutter (12043): ══╡ EXCEPTION CAUGHT BY RENDERING LIBRARY ╞══",
-    "jank": "I/Choreographer(12043): Skipped 47 frames!  The application may be doing too much work on its main thread.",
+    "flutter": {
+        "native-crash": "E/AndroidRuntime(12043): FATAL EXCEPTION: main",
+        "dart-exception": "E/flutter (12043): [ERROR:flutter/.../dart_error.cc] Unhandled Exception: Null check operator used on a null value",
+        "renderflex-overflow": "I/flutter (12043): A RenderFlex overflowed by 42 pixels on the right.",
+        "render-error": "I/flutter (12043): ══╡ EXCEPTION CAUGHT BY RENDERING LIBRARY ╞══",
+        "jank": "I/Choreographer(12043): Skipped 47 frames!  The application may be doing too much work on its main thread.",
+    },
+    "react-native": {
+        "native-crash": "E/AndroidRuntime(9871): FATAL EXCEPTION: main",
+        "js-exception": "E/AndroidRuntime(9871): com.facebook.react.common.JavascriptException: TypeError: undefined is not an object",
+        "unhandled-rejection": "W/ReactNativeJS(9871): Possible Unhandled Promise Rejection (id: 0): TypeError: Network request failed",
+        "bundle-error": "E/ReactNativeJS(9871): Unable to resolve module ./MissingScreen from src/App.jsx",
+        "react-warning": 'W/ReactNativeJS(9871): Warning: Each child in a list should have a unique "key" prop.',
+        "jank": "I/Choreographer(9871): Skipped 63 frames!  The application may be doing too much work on its main thread.",
+    },
 }
 
 print("=== (1) offline matching ===")
-passed = 0
-for expected_kind, sample in SAMPLES.items():
-    hit = None
-    for severity, kind, pattern in _SIGNAL_SPECS:
-        if pattern.search(sample):
-            hit = kind
-            break
-    ok = hit == expected_kind
-    passed += ok
-    print(f"  {'OK ' if ok else 'FAIL'} {expected_kind:22} -> matched {hit}")
-print(f"  {passed}/{len(SAMPLES)} signals matched")
+total = failures = 0
+for plat_name, samples in SAMPLES.items():
+    plat = platforms.by_name(plat_name)
+    print(f"  -- {plat.label} --")
+    for expected_kind, sample in samples.items():
+        sig = plat.classify(sample)
+        hit = sig.kind if sig else None
+        ok = hit == expected_kind
+        total += 1
+        failures += not ok
+        print(f"    {'OK ' if ok else 'FAIL'} {expected_kind:22} -> matched {hit}")
+print(f"  {total - failures}/{total} signals matched")
 
-loc_sample = "I/flutter (12043): Row  lib/screens/library_screen.dart:42:15"
-m = _DART_LOCATION_RE.search(loc_sample)
-print(f"  location extraction: {m.group(1)}:{m.group(2)}" if m else "  location: FAIL")
+# Location extraction must find real app source and skip vendored/generated code.
+LOCATIONS = [
+    ("flutter", "I/flutter (12043): Row  lib/screens/library_screen.dart:42:15",
+     "lib/screens/library_screen.dart", 42),
+    ("flutter", "I/flutter (12043): Column package:scribe/screens/home.dart:88:12",
+     "lib/screens/home.dart", 88),
+    ("react-native", "E/ReactNativeJS(9871):     at CardScreen (src/screens/CardScreen.jsx:42:15)",
+     "src/screens/CardScreen.jsx", 42),
+    # node_modules and the Metro bundle must be skipped in favour of app code.
+    ("react-native", "E/ReactNativeJS(9871): at f (node_modules/react/i.js:9:1) at G (App.tsx:7:3)",
+     "App.tsx", 7),
+]
+
+
+class _NoDevice:
+    """The oracle only needs a device to stream; matching is pure."""
+    serial = None
+
+    def _shell(self, *a, **k):
+        return ""
+
+    def _base(self):
+        return ["adb"]
+
+
+for plat_name, line, want_file, want_line in LOCATIONS:
+    got_file, got_line = Oracle(_NoDevice(), platform=plat_name)._extract_location([line])
+    ok = (got_file, got_line) == (want_file, want_line)
+    failures += not ok
+    print(f"  {'OK ' if ok else 'FAIL'} location [{plat_name}] -> {got_file}:{got_line}")
+
+if failures:
+    print(f"\n{failures} offline check(s) FAILED")
+    sys.exit(1)
 
 # ---- (2) live stream check -------------------------------------------------
+# Everything above is pure and runs anywhere; the rest needs a real device.
+if "--offline" in sys.argv:
+    print("\n(offline mode: skipping the live logcat check)")
+    sys.exit(0)
+
 print("\n=== (2) live logcat while tapping the app ===")
 cfg = Config()
 dev = Device(cfg.serial)

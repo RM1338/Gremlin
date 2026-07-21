@@ -30,8 +30,19 @@ class Config:
     activity: str = ACTIVITY
     scribe_root: Path = SCRIBE_ROOT
 
-    # adb device serial; None means "the only connected device".
+    # Which UI toolkit built the app under test — a `platforms.Platform.name`,
+    # e.g. "flutter" or "react-native". It selects the log vocabulary the oracle
+    # matches against and the rules the Tier-2 fixer works under. Empty means
+    # "not identified"; the default is kept for backward compatibility.
+    platform: str = "flutter"
+
+    # adb device serial; None means "the only connected device". An emulator
+    # looks like "emulator-5554" and is driven exactly like a physical phone.
     serial: str | None = None
+
+    # AVD to boot for this run when no device is connected. None means "use
+    # whatever adb already sees".
+    avd: str | None = None
 
     # Exploration budget (upper bound). Coverage-driven exploration usually stops
     # earlier, when every reachable control has been tapped; this is the cap so a

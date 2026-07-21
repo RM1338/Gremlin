@@ -17,6 +17,7 @@ from pathlib import Path
 
 from .config import Config
 from .models import Action, Bug
+from . import platforms
 
 
 def _repro_steps(trace: list[Action]) -> str:
@@ -37,17 +38,20 @@ def _repro_steps(trace: list[Action]) -> str:
 
 
 def _source_excerpt(scribe_root: Path, dart_file: str | None, dart_line: int | None,
-                    span: int = 12) -> tuple[str, str] | None:
+                    span: int = 12, platform: str | None = None) -> tuple[str, str] | None:
     """Return (relative_path, excerpt) around the failing line, if resolvable."""
     if not dart_file or not dart_line:
         return None
-    # Log paths may be like "lib/screens/x.dart", "package:myapp/screens/x.dart",
-    # or "myapp/screens/x.dart" — normalize any package prefix to the lib/ root.
-    rel = re.sub(r"^(package:)?[^/]+/", "lib/", dart_file) if "/" in dart_file else dart_file
+    plat = platforms.by_name(platform)
+    # Log paths carry a toolkit-specific prefix ("package:myapp/…" for Flutter,
+    # "./src/…" for React Native); the Platform knows how to strip it.
+    rel = plat.normalize_source_path(dart_file)
     path = scribe_root / rel
     if not path.exists():
-        # Fall back to a basename search under lib/.
-        matches = list(scribe_root.glob(f"lib/**/{Path(rel).name}"))
+        # Fall back to a basename search in the places this toolkit keeps source.
+        name = Path(rel).name
+        matches = [m for g in plat.source_globs
+                   for m in scribe_root.glob(g.format(name=name))]
         if not matches:
             return None
         path = matches[0]
@@ -94,12 +98,15 @@ def tier0_markdown(bug: Bug, cfg: Config) -> str:
 
 
 def tier1_prompt(bug: Bug, cfg: Config) -> str:
-    excerpt = _source_excerpt(cfg.scribe_root, bug.dart_file, bug.dart_line)
+    plat = platforms.by_name(cfg.platform)
+    excerpt = _source_excerpt(cfg.scribe_root, bug.dart_file, bug.dart_line,
+                              platform=cfg.platform)
     src_block = ""
     if excerpt:
         rel, code = excerpt
-        src_block = f"\n\nThe relevant source (`{rel}`, `>>` marks the failing line):\n\n```dart\n{code}\n```"
-    return f"""I have a Flutter app bug found by automated UI exploration.
+        src_block = (f"\n\nThe relevant source (`{rel}`, `>>` marks the failing line):"
+                     f"\n\n```{plat.fence}\n{code}\n```")
+    return f"""I have a {plat.label} app bug found by automated UI exploration.
 
 **Signal (ground truth from `adb logcat`):**
 ```
@@ -112,9 +119,8 @@ def tier1_prompt(bug: Bug, cfg: Config) -> str:
 {_repro_steps(bug.trace)}{src_block}
 
 Please fix the root cause so this log signal no longer appears. Do NOT merely
-silence it — e.g. do not wrap the widget in a scroll view just to hide an
-overflow, do not wrap build() in try/catch, and do not delete the widget. The
-screen must keep looking and behaving as intended.
+silence it — {plat.fix_guidance} The screen must keep looking and behaving as
+intended.
 """
 
 

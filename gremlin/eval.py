@@ -51,7 +51,7 @@ def run_monkey(cfg: Config, actions: int, burst: int = 5, throttle_ms: int = 400
     dev.prepare()
     dev.relaunch(cfg.package, cfg.activity)
 
-    oracle = Oracle(dev, package=cfg.package)
+    oracle = Oracle(dev, package=cfg.package, platform=cfg.platform)
     oracle.start()
     time.sleep(1.0)
     oracle.drain()

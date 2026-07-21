@@ -39,7 +39,7 @@ class Explorer:
     def __init__(self, cfg: Config, on_event: EventSink | None = None) -> None:
         self.cfg = cfg
         self.dev = Device(cfg.serial)
-        self.oracle = Oracle(self.dev, package=cfg.package)
+        self.oracle = Oracle(self.dev, package=cfg.package, platform=cfg.platform)
         self.memory = ScreenMemory(cfg.phash_same_threshold)
         self.trace: list[Action] = []
         self.bugs: dict[str, Bug] = {}  # dedup_key -> Bug

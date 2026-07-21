@@ -31,6 +31,7 @@ from .gates import (
 from .models import Bug
 from .replayer import replay
 from .reporter import tier1_prompt
+from . import platforms
 
 
 @dataclass
@@ -67,13 +68,17 @@ def _require_clean_tree(cfg: Config) -> None:
 
 
 def rebuild_and_install(cfg: Config) -> None:
-    """Rebuild the debug APK and install it, so replay tests the patched code."""
-    subprocess.run(
-        ["flutter", "build", "apk", "--debug"],
-        cwd=str(cfg.scribe_root), check=True,
-    )
-    apk = cfg.scribe_root / "build/app/outputs/flutter-apk/app-debug.apk"
-    subprocess.run(["adb", "install", "-r", str(apk)], check=True)
+    """Rebuild the APK and install it, so replay tests the patched code.
+
+    How to build is the toolkit's business (`flutter build apk` vs a gradle
+    assemble), so the Platform owns it; installing it is the same adb call
+    either way.
+    """
+    apk = platforms.by_name(cfg.platform).build(cfg.scribe_root)
+    install = ["adb"]
+    if cfg.serial:
+        install += ["-s", cfg.serial]
+    subprocess.run(install + ["install", "-r", str(apk)], check=True)
 
 
 def fix_one(cfg: Config, bug: Bug, baseline_keys: set[str],
