@@ -49,6 +49,14 @@ _JSON_OBJ_RE = re.compile(r"\{.*\}", re.DOTALL)
 
 def extract_json(text: str) -> dict:
     """Pull the first JSON object out of a model reply, tolerating fences/prose."""
+    # Reasoning models (Qwen3, gpt-oss) emit a <think>…</think> preamble before
+    # the answer. It is prose about the answer, and it frequently contains a
+    # draft JSON object — so scanning the raw reply would pick up the model's
+    # first guess rather than its conclusion. Drop the thinking first.
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.DOTALL)
+    # An unterminated block means the reply was cut off mid-thought; there is no
+    # answer after it to find.
+    text = re.sub(r"<think>.*", "", text, flags=re.DOTALL)
     # Strip a ```json ... ``` fence if present.
     fenced = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", text, re.DOTALL)
     candidate = fenced.group(1) if fenced else None

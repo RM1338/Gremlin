@@ -24,12 +24,21 @@ from PIL import Image
 from ._env import load_dotenv
 
 load_dotenv()
-MODEL = os.environ.get("GROQ_MODEL", "meta-llama/llama-4-scout-17b-16e-instruct")
+# Groq retires hosted models without notice — `llama-4-scout`, the previous
+# default here, now 404s as `model_not_found`, which stops a run at step 1. This
+# is the vision-capable model Groq currently serves; if it disappears too, list
+# what's available with `GET /openai/v1/models` and set GROQ_MODEL.
+MODEL = os.environ.get("GROQ_MODEL", "qwen/qwen3.6-27b")
 _ENDPOINT = "https://api.groq.com/openai/v1/chat/completions"
 
 
 class GroqError(RuntimeError):
     pass
+
+
+def _is_reasoning_model(name: str) -> bool:
+    """Whether this model thinks before answering, and so accepts an effort dial."""
+    return any(tag in name.lower() for tag in ("qwen3", "gpt-oss", "deepseek-r1"))
 
 
 def _downscale_data_url(path: Path, width: int) -> str:
@@ -57,12 +66,24 @@ def generate(prompt: str, image_path: Path | None = None, vision_width: int = 54
         content.append({"type": "image_url",
                         "image_url": {"url": _downscale_data_url(Path(image_path), vision_width)}})
 
-    body = json.dumps({
+    payload = {
         "model": MODEL,
         "messages": [{"role": "user", "content": content}],
         "temperature": 0.4,
-        "max_tokens": 512,
-    }).encode()
+        # A reasoning model spends this budget thinking *before* it answers, and
+        # 512 tokens is enough to think and then get truncated with no answer at
+        # all — which reaches the caller as an empty reply. The decision we want
+        # is a two-line JSON object; the headroom is purely for the thinking.
+        "max_tokens": 2048,
+    }
+    # Turn thinking off where the model allows it. Picking which button to tap
+    # next needs no deliberation, and a reasoning model left to think will spend
+    # the whole token budget on it and return no answer at all. Groq accepts
+    # only "none" or "default" here — other vendors use low/medium/high, so this
+    # stays overridable.
+    if _is_reasoning_model(MODEL):
+        payload["reasoning_effort"] = os.environ.get("GROQ_REASONING_EFFORT", "none")
+    body = json.dumps(payload).encode()
 
     # A real User-Agent is required: Groq is behind Cloudflare, which blocks the
     # default urllib agent with a 403 (error 1010).

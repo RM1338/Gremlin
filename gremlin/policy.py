@@ -16,8 +16,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .grounding import Element
-from .vision import generate as vision_generate
-from .llm import extract_json
+from .vision import generate as vision_generate, ModelError
+from .llm import extract_json, LLMError
 
 
 @dataclass
@@ -80,7 +80,14 @@ def decide(
         elements=element_lines,
     )
     reply = vision_generate(prompt, image_path=screenshot_path, vision_width=vision_width)
-    data = extract_json(reply)
+    try:
+        data = extract_json(reply)
+    except LLMError as e:
+        # A reply we can't parse is a model problem, not a bug in the run — a
+        # reasoning model that thinks past its token budget returns nothing
+        # usable. Report it as one, so the explorer ends the run cleanly and
+        # keeps the trace instead of dying with a stack trace and losing it.
+        raise ModelError(f"unparseable reply from the vision model: {e}") from e
     return Decision(
         verb=str(data.get("verb", "back")),
         index=data.get("index"),
