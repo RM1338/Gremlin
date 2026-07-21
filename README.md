@@ -94,7 +94,9 @@ It installs `FlutterError.onError` and `PlatformDispatcher.onError` and prints a
 | `gremlin/grounding.py` | `uiautomator dump` to tappable elements with coordinates |
 | `gremlin/oracle.py` | background `logcat` watcher; exact signal matching |
 | `gremlin/screen_memory.py` | perceptual-hash visited-screen memory |
-| `gremlin/targets.py` | detect Flutter projects to package / activity / source per app |
+| `gremlin/platforms.py` | one `Platform` record per UI toolkit — the only toolkit-specific knowledge |
+| `gremlin/targets.py` | detect app projects to package / activity / source / platform per app |
+| `gremlin/emulator.py` | boot and manage an Android emulator, so a run needs no physical phone |
 | `gremlin/policy.py` | the exploration prompt and JSON action parsing |
 | `gremlin/vision.py` + `gemini.py` + `groq.py` | pluggable free vision backend (Gemini / Groq) |
 | `gremlin/explorer.py` | the observe / decide / act / check loop |
@@ -108,6 +110,7 @@ It installs `FlutterError.onError` and `PlatformDispatcher.onError` and prints a
 | `frontend/` | React console (landing, auth, Overview / Live / Trace / Bugs / Benchmark) |
 | `gremlin/eval.py` | Gremlin vs. `adb shell monkey` baseline |
 | `fixtures/gremlin_bench/` | a deliberately broken Flutter app — the reproducible demo and self-test |
+| `fixtures/gremlin_bench_rn/` | the React Native mirror of the above — proves the platform abstraction |
 | `tests/` | offline oracle checks and a device smoke test |
 
 ## Install

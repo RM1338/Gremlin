@@ -17,3 +17,6 @@ frontend/dist/
 .claude/settings.local.json
 .DS_Store
 *.log
+
+# design-tool canvas state (Kombai)
+.kombai/
