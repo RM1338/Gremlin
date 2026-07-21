@@ -11,11 +11,19 @@ let state = {
   trace: null,
   evalData: null,
   screens: [],
+  fixBackend: "prompt", // coding agent Tier 2 would use (FIX_BACKEND)
   summary: null, // set when a run finishes this session
   live: { steps: [], bugs: [], current: null, screenCount: 0 },
-  targets: [],        // detected Flutter projects
+  targets: [],        // detected app projects (Flutter + React Native)
   projectsRoot: "",
   selected: null,     // the chosen target object
+  // What we can run on. A phone on USB and a booted emulator are both just an
+  // adb serial, so they live in one list and the developer picks either.
+  devices: [],        // [{serial, state, emulator}]
+  avds: [],           // AVD names we could boot
+  serial: null,       // chosen adb serial; null = "whatever adb sees"
+  emulatorProblem: null, // why we can't offer an emulator, if we can't
+  booting: false,     // an AVD is starting up
 };
 
 const listeners = new Set();
@@ -32,6 +40,7 @@ export async function loadState() {
     set({
       loading: false, running: d.running, package: d.package || state.package,
       trace: d.trace, evalData: d.eval, screens: d.screens || [],
+      fixBackend: d.fix_backend || state.fixBackend,
     });
   } catch {
     // Static deploy (no backend): fall back to a bundled recorded run if present.
@@ -61,6 +70,62 @@ export async function loadTargets() {
 }
 
 export function selectTarget(t) { set({ selected: t }); }
+
+export async function loadDevices() {
+  try {
+    const r = await fetch("/api/devices");
+    const d = await r.json();
+    set({
+      devices: d.attached || [],
+      avds: d.avds || [],
+      serial: d.selected ?? null,
+      emulatorProblem: d.emulator_problem ?? null,
+    });
+  } catch { /* no backend */ }
+}
+
+export async function selectDevice(serial) {
+  set({ serial });
+  try {
+    await fetch("/api/devices/select", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ serial }),
+    });
+  } catch { /* keep the optimistic selection; loadDevices will reconcile */ }
+  // The app list is per-device: a different device has different apps installed.
+  await loadTargets();
+}
+
+export async function startEmulator(avd, { headless = false } = {}) {
+  if (state.booting) return;
+  set({ booting: true });
+  try {
+    const r = await fetch("/api/emulator/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ avd, headless }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || "the emulator did not start");
+    set({ serial: d.serial });
+    await loadDevices();
+    // A freshly booted emulator has none of the developer's apps installed yet,
+    // so re-read the target list rather than showing the old device's apps.
+    await loadTargets();
+    return d;
+  } finally {
+    set({ booting: false });
+  }
+}
+
+export async function stopEmulator() {
+  try {
+    await fetch("/api/emulator/stop", { method: "POST" });
+  } catch { /* already gone */ }
+  await loadDevices();
+  await loadTargets();
+}
 
 export async function startRun(target) {
   if (state.running) return;

@@ -1,6 +1,15 @@
-import { Bug, Check } from "../lib/icons.jsx";
+import { useState } from "react";
+import { Bug, Check, Copy, Doc, Wrench, Spark2, X } from "../lib/icons.jsx";
 import { sevClass, screenUrl } from "../lib/ui.jsx";
 import { useStore } from "../lib/useStore.js";
+
+// The three gates the Tier-2 autofix must clear, in pipeline order. Names match
+// gremlin/gates.py so the UI stays honest about what actually runs.
+const GATES = [
+  ["signal-gone", "The bug's log signal no longer fires on replay"],
+  ["screen-looks-same", "The screen still renders — no widget deleted or blanked"],
+  ["no-new-breakage", "A fresh re-exploration surfaces no new signals"],
+];
 
 export default function Bugs() {
   const st = useStore();
@@ -10,7 +19,7 @@ export default function Bugs() {
     <>
       <div className="page-head">
         <h1 className="page-title">Bugs</h1>
-        <p className="page-desc">Crashes, layout overflows and jank the oracle caught by draining logcat scoped to the app pid — each with the screen at the moment of failure and a repro trace.</p>
+        <p className="page-desc">Crashes, layout overflows and jank the oracle caught by draining logcat scoped to the app pid. Each bug carries a three-tier remediation ladder — the <b>report</b>, a portable <b>fix prompt</b>, and the <b>autofix</b> pipeline.</p>
       </div>
 
       {bugs.length === 0 ? (
@@ -20,24 +29,136 @@ export default function Bugs() {
           <p>Gremlin explored the app end-to-end without tripping the oracle. Plant a defect to see detection light up.</p>
         </div>
       ) : (
-        <div className="grid-2">
-          {bugs.map((b, i) => {
-            const shot = b.screenshot ? b.screenshot.split("/").pop() : null;
-            return (
-              <div className="card" key={i}>
-                <div className={"bug-card " + sevClass(b.severity)} style={{ border: 0, padding: 0 }}>
-                  <div className="sev"><Bug /> {b.severity}</div>
-                  <div className="t">{b.title || b.kind}</div>
-                  <div className="s">found at step {b.step} · {b.kind}</div>
-                </div>
-                {b.dart_file && <div className="tl-target" style={{ marginTop: 12 }}>at <b>{b.dart_file}:{b.dart_line}</b></div>}
-                {b.log_line && <pre className="note" style={{ marginTop: 10, whiteSpace: "pre-wrap", background: "var(--surface-2)", padding: 12, borderRadius: 8, overflow: "auto" }}>{b.log_line}</pre>}
-                {shot && <div className="tl-thumb" style={{ width: 120, marginTop: 12 }}><img loading="lazy" src={screenUrl(shot)} alt="" /></div>}
-              </div>
-            );
-          })}
+        <div className="bug-list">
+          {bugs.map((b, i) => <BugCard key={i} bug={b} backend={st.fixBackend} />)}
         </div>
       )}
     </>
+  );
+}
+
+function BugCard({ bug: b, backend }) {
+  const [tier, setTier] = useState(0);
+  const shot = b.screenshot ? b.screenshot.split("/").pop() : null;
+  const sev = sevClass(b.severity);
+
+  return (
+    <div className={"card bug " + sev}>
+      <div className="bug-id">
+        <div className="bug-headrow">
+          <span className={"sev-pill " + sev}><Bug /> {b.severity}</span>
+          <span className="bug-step">found at step {b.step} · {b.kind}</span>
+        </div>
+        <div className="bug-title">{b.title || b.kind}</div>
+        {b.dart_file && <div className="bug-loc">at <b>{b.dart_file}:{b.dart_line}</b></div>}
+        {shot && <div className="bug-shot"><img loading="lazy" src={screenUrl(shot)} alt="screen at failure" /></div>}
+      </div>
+
+      <div className="tier-col">
+        <div className="tier-tabs" role="tablist">
+          <TierTab n={0} label="Report" active={tier} set={setTier} icon={<Doc />} />
+          <TierTab n={1} label="Fix prompt" active={tier} set={setTier} icon={<Spark2 />} />
+          <TierTab n={2} label="Autofix" active={tier} set={setTier} icon={<Wrench />} />
+        </div>
+
+        <div className="tier-body">
+          {tier === 0 && <Tier0 bug={b} />}
+          {tier === 1 && <Tier1 bug={b} />}
+          {tier === 2 && <Tier2 bug={b} backend={backend} />}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TierTab({ n, label, active, set, icon }) {
+  return (
+    <button className={"tier-tab t" + n + (active === n ? " active" : "")} onClick={() => set(n)} role="tab" aria-selected={active === n}>
+      <span className="tn">T{n}</span>{icon}<span className="tl">{label}</span>
+    </button>
+  );
+}
+
+function Tier0({ bug: b }) {
+  const steps = b.trace || [];
+  return (
+    <div className="tier-pane">
+      <div className="tier-lede">Ground truth from <code>adb logcat</code>, scoped to the app's pid.</div>
+      {b.log_line && <pre className="signal">{b.log_line}</pre>}
+      {steps.length > 0 && (
+        <>
+          <div className="tier-sub">Reproduction — from a cold start</div>
+          <ol className="repro">
+            {steps.map((s, i) => (
+              <li key={i}><span className={"verb " + (s.verb || "tap")}>{s.verb}</span>{s.target_label ? <b>{s.target_label}</b> : null}{s.reason ? <span className="why"> — {s.reason}</span> : null}</li>
+            ))}
+          </ol>
+        </>
+      )}
+    </div>
+  );
+}
+
+function Tier1({ bug: b }) {
+  const [copied, setCopied] = useState(false);
+  const prompt = b.tier1_prompt;
+  if (!prompt) return <div className="tier-pane"><div className="tier-empty">Fix prompt not available for this run.</div></div>;
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(prompt); setCopied(true); setTimeout(() => setCopied(false), 1800); } catch {}
+  };
+  return (
+    <div className="tier-pane">
+      <div className="tier-lede">A portable, self-contained prompt — signal, repro, and the failing source — ready to paste into any coding agent.</div>
+      <div className="prompt-wrap">
+        <button className={"copy-btn" + (copied ? " ok" : "")} onClick={copy}>{copied ? <><Check /> Copied</> : <><Copy /> Copy prompt</>}</button>
+        <pre className="prompt">{prompt}</pre>
+      </div>
+    </div>
+  );
+}
+
+function Tier2({ bug: b, backend }) {
+  const fix = b.tier2_fix;
+  const gateByName = {};
+  (fix?.gates || []).forEach((g) => { gateByName[g.name] = g; });
+  const status = fix ? (fix.verified ? "verified" : "reverted") : "pending";
+  const statusText = fix ? (fix.verified ? "Verified — patch cleared all gates" : "Reverted — a gate failed") : "Not yet applied";
+
+  return (
+    <div className="tier-pane">
+      <div className="tier-lede">The autofix drives a coding agent to patch the source, rebuilds the APK, replays the trace, and grades the patch against three gates. A guard rejects cheap symptom-silencers first.</div>
+
+      <div className="fix-meta">
+        <span className={"fix-status " + status}><span className="dot" />{statusText}</span>
+        <span className="fix-backend">backend <b>{backend || "prompt"}</b></span>
+      </div>
+
+      <div className="gate-ladder">
+        <GateRow name="static guard" desc="Rejects try/catch swallows, deleted widgets, scroll-view hacks" state={fix ? (fix.guard_violations?.length ? "fail" : "pass") : "pending"} />
+        {GATES.map(([name, desc]) => {
+          const g = gateByName[name];
+          const state = g ? (g.passed ? "pass" : "fail") : "pending";
+          return <GateRow key={name} name={name} desc={g?.detail || desc} state={state} />;
+        })}
+      </div>
+
+      {fix?.branch && <div className="tier-sub" style={{ marginTop: 12 }}>Patch left on branch <code>{fix.branch}</code> for review.</div>}
+      {!fix && (
+        <>
+          <div className="tier-sub" style={{ marginTop: 12 }}>Run it against this bug</div>
+          <pre className="cmd">python -m gremlin.autofix --run runs/latest --backend {backend && backend !== "prompt" ? backend : "claude"}</pre>
+        </>
+      )}
+    </div>
+  );
+}
+
+function GateRow({ name, desc, state }) {
+  const icon = state === "pass" ? <Check /> : state === "fail" ? <X /> : <span className="pending-dot" />;
+  return (
+    <div className={"gate " + state}>
+      <span className="gi">{icon}</span>
+      <div className="gmain"><div className="gname">{name}</div><div className="gdesc">{desc}</div></div>
+    </div>
   );
 }

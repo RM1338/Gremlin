@@ -3,7 +3,8 @@ import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import Mascot from "../lib/Mascot.jsx";
 import { Home, Live, List, Bug, Bars, Bolt, Moon, LogOut, Chevron, Check, Screens, Book } from "../lib/icons.jsx";
 import { useStore } from "../lib/useStore.js";
-import { loadState, connectWS, startRun, loadTargets, selectTarget } from "../lib/store.js";
+import { loadState, connectWS, startRun, loadTargets, selectTarget,
+  loadDevices, selectDevice, startEmulator, stopEmulator } from "../lib/store.js";
 import { getUser, signOut, initials } from "../lib/auth.js";
 import { formatDuration } from "../lib/notify.js";
 
@@ -17,7 +18,7 @@ export default function Console() {
   const [toast, setToast] = useState(null);
   const wasRunning = useRef(false);
 
-  useEffect(() => { loadState(); loadTargets(); connectWS(); }, []);
+  useEffect(() => { loadState(); loadDevices(); loadTargets(); connectWS(); }, []);
 
   // Surface a toast when a run completes (in addition to the OS notification).
   useEffect(() => {
@@ -34,9 +35,14 @@ export default function Console() {
   const bugs = (st.trace?.bugs?.length ?? 0) || st.live.bugs.length;
   const runState = st.running ? "live" : st.done ? "done" : "idle";
 
+  function flash(msg, ms = 5000) {
+    setToast(msg);
+    setTimeout(() => setToast(null), ms);
+  }
+
   async function onStart() {
     try { await startRun(); nav("/app/live"); }
-    catch (e) { setToast(e.message); setTimeout(() => setToast(null), 5000); }
+    catch (e) { flash(e.message); }
   }
   function toggleTheme() {
     const next = document.documentElement.dataset.theme === "light" ? "dark" : "light";
@@ -88,6 +94,7 @@ export default function Console() {
         <header className="topbar">
           <div className="crumb"><span>Gremlin</span><Chevron /><span className="here">{TITLES[loc.pathname] || "Overview"}</span></div>
           <div className="topbar-spacer" />
+          <DevicePicker st={st} disabled={st.running} onNotify={flash} />
           <TargetPicker targets={st.targets} selected={st.selected} disabled={st.running} onPick={selectTarget}
             defaultOpen={new URLSearchParams(loc.search).has("apps")} />
           <button className="btn btn-primary" onClick={onStart} disabled={st.running || (st.selected && !st.selected.installed)}>
@@ -99,6 +106,111 @@ export default function Console() {
       </div>
 
       {toast && <div className="toast"><Check /> {toast}</div>}
+    </div>
+  );
+}
+
+/* Where the run happens: a phone on USB, or an emulator we boot on demand.
+   Both are just an adb serial downstream, so they share one menu. */
+function DevicePicker({ st, disabled, onNotify }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    const close = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", close);
+    return () => document.removeEventListener("mousedown", close);
+  }, []);
+
+  const { devices, avds, serial, emulatorProblem, booting } = st;
+  const current = devices.find((d) => d.serial === serial) || null;
+  // An emulator we booted is stoppable; a phone on USB is not ours to kill.
+  const runningEmu = devices.find((d) => d.emulator && d.serial === serial);
+  // A phone that hasn't had its USB-debugging dialog accepted can't be driven.
+  const unauthorized = devices.filter((d) => d.state === "unauthorized");
+
+  const label = booting ? "Booting emulator…"
+    : current ? (current.emulator ? "Emulator" : "Phone (USB)")
+    : devices.length === 1 ? (devices[0].emulator ? "Emulator" : "Phone (USB)")
+    : devices.length === 0 ? "No device" : "Pick device";
+
+  async function pickDevice(d) {
+    setOpen(false);
+    if (d.state === "unauthorized") {
+      onNotify("That phone hasn't authorised USB debugging — accept the dialog on the device, then reconnect.");
+      return;
+    }
+    await selectDevice(d.serial);
+  }
+
+  async function boot(avd) {
+    setOpen(false);
+    onNotify(`Booting ${avd} — a cold start takes a minute…`, 60000);
+    try {
+      const d = await startEmulator(avd);
+      onNotify(`Emulator ready: ${d.serial}`);
+    } catch (e) {
+      onNotify(`Emulator did not start: ${e.message}`, 12000);
+    }
+  }
+
+  async function shutdown() {
+    setOpen(false);
+    await stopEmulator();
+    onNotify("Emulator shut down.");
+  }
+
+  return (
+    <div className="target-picker" ref={ref}>
+      <button className="tp-btn" onClick={() => !disabled && !booting && setOpen((o) => !o)}
+        disabled={disabled || booting} title="Choose a phone or an emulator to run on">
+        <span className={"pulse " + (booting ? "live" : devices.length ? "live" : "idle")} />
+        <span className="tp-name">{label}</span>
+        <Chevron style={{ transform: "rotate(90deg)", width: 13, height: 13, opacity: 0.6 }} />
+      </button>
+      {open && (
+        <div className="tp-menu">
+          <div className="tp-scroll">
+            <div className="tp-head">Connected</div>
+            {devices.length === 0 && <div className="tp-none">Nothing attached — boot an emulator below.</div>}
+            {devices.map((d) => (
+              <div key={d.serial} className={"tp-item" + (d.serial === serial ? " sel" : "")}
+                onClick={() => pickDevice(d)}>
+                <span className={"pulse " + (d.state === "device" ? "live" : "idle")} />
+                <div className="tp-item-main">
+                  <div className="tp-item-name">{d.emulator ? "Emulator" : "Phone (USB)"}</div>
+                  <div className="tp-item-pkg">{d.serial}</div>
+                </div>
+                {d.state !== "device" && <span className="tp-badge">{d.state}</span>}
+                {d.serial === serial && <Check style={{ width: 15, height: 15, color: "var(--brand)", flex: "none" }} />}
+              </div>
+            ))}
+
+            <div className="tp-head">Emulators</div>
+            {emulatorProblem
+              ? <div className="tp-none">{emulatorProblem}</div>
+              : avds.map((avd) => (
+                  <div key={avd} className="tp-item" onClick={() => boot(avd)}>
+                    <span className="pulse idle" />
+                    <div className="tp-item-main">
+                      <div className="tp-item-name">{avd}</div>
+                      <div className="tp-item-pkg">{runningEmu ? "boot another" : "boot this"}</div>
+                    </div>
+                  </div>
+                ))}
+            {runningEmu && (
+              <div className="tp-item" onClick={shutdown}>
+                <span className="pulse idle" />
+                <div className="tp-item-main"><div className="tp-item-name">Shut down emulator</div></div>
+              </div>
+            )}
+            {unauthorized.length > 0 && (
+              <div className="tp-none">
+                {unauthorized.length} phone(s) awaiting USB-debugging authorisation — accept the dialog on the device.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -131,6 +243,7 @@ function TargetPicker({ targets, selected, disabled, onPick, defaultOpen = false
         <div className="tp-item-name">{t.name}</div>
         {t.name !== t.package && <div className="tp-item-pkg">{t.package}</div>}
       </div>
+      {t.platform_label && <span className="tp-tag">{t.platform_label}</span>}
       {t.source === "device" && <span className="tp-tag">explore-only</span>}
       {!t.installed && <span className="tp-badge">not installed</span>}
       {selected?.package === t.package && <Check style={{ width: 15, height: 15, color: "var(--brand)", flex: "none" }} />}
@@ -148,7 +261,7 @@ function TargetPicker({ targets, selected, disabled, onPick, defaultOpen = false
         <div className="tp-menu">
           <input className="tp-search" autoFocus placeholder="Search apps…" value={q} onChange={(e) => setQ(e.target.value)} />
           <div className="tp-scroll">
-            {projects.length > 0 && <div className="tp-head">Your Flutter projects</div>}
+            {projects.length > 0 && <div className="tp-head">Your app projects</div>}
             {projects.map(item)}
             {devices.length > 0 && <div className="tp-head">Installed on device</div>}
             {devices.map(item)}
