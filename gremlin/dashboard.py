@@ -30,6 +30,7 @@ from .config import Config, PROJECTS_ROOT
 from .device import Device
 from .explorer import Explorer
 from .targets import all_targets
+from . import emulator, platforms
 
 _WEB = Path(__file__).parent / "web"
 # The React console, once built with `cd frontend && npm run build`.
@@ -40,6 +41,9 @@ _loop: asyncio.AbstractEventLoop | None = None
 _run_started = False
 _cfg = Config()
 _target_name: str | None = None  # friendly name of the selected app, for the UI
+# An emulator this dashboard booted, so it can be shut down again. None when we
+# are driving a device that was already attached — which we must never kill.
+_emulator: "emulator.Emulator | None" = None
 
 
 @asynccontextmanager
@@ -152,19 +156,89 @@ async def start(request: Request) -> dict:
             _cfg.activity = activity
             _cfg.scribe_root = Path(body["source_root"]) if body.get("source_root") else PROJECTS_ROOT
             _target_name = body.get("name")
+            # A project target knows its own toolkit; a device-only one has to be
+            # identified from the installed APK, which costs a pull — so it
+            # happens here, on selection, not while listing targets.
+            plat = body.get("platform")
+            if not plat:
+                found = platforms.detect_platform_on_device(Device(_cfg.serial), pkg)
+                plat = found.name if found else platforms.DEFAULT.name
+            _cfg.platform = plat
     _start_run()
-    return {"started": True, "package": _cfg.package, "activity": _cfg.activity}
+    return {"started": True, "package": _cfg.package, "activity": _cfg.activity,
+            "platform": _cfg.platform}
 
 
 @app.get("/api/targets")
 async def api_targets() -> JSONResponse:
-    """Flutter projects (full capability) plus installed apps, flagged by source."""
+    """App projects (full capability) plus installed apps, flagged by source."""
     targets = all_targets(PROJECTS_ROOT, dev=Device(_cfg.serial))
     return JSONResponse({
         "projects_root": str(PROJECTS_ROOT),
         "targets": [t.to_dict() for t in targets],
         "selected": _cfg.package,
     })
+
+
+@app.get("/api/devices")
+async def api_devices() -> JSONResponse:
+    """What we can run on: attached devices, plus emulators we could boot.
+
+    This is what lets a developer with no phone on their desk still drive a run —
+    an emulator is just another adb serial to everything downstream.
+    """
+    status = emulator.sdk_status()
+    attached = [{"serial": s, "state": st, "emulator": emulator.is_emulator(s)}
+                for s, st in emulator._adb_devices()]
+    return JSONResponse({
+        "attached": attached,
+        "avds": list(status.avds),
+        "running_emulators": emulator.running_emulators(),
+        "selected": _cfg.serial,
+        # Non-null when we cannot offer emulator boot, and says how to fix it.
+        "emulator_problem": status.problem,
+    })
+
+
+@app.post("/api/devices/select")
+async def api_select_device(request: Request) -> JSONResponse:
+    """Point subsequent runs at a specific adb serial (null = the only device)."""
+    body = await request.json()
+    _cfg.serial = body.get("serial") or None
+    return JSONResponse({"selected": _cfg.serial})
+
+
+@app.post("/api/emulator/start")
+async def api_emulator_start(request: Request) -> JSONResponse:
+    """Boot an AVD and select it, so the next run has something to drive."""
+    global _emulator
+    if _run_started:
+        return JSONResponse({"error": "a run is already in progress"}, status_code=409)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    try:
+        # Booting blocks for up to a few minutes, so it must not hold the event
+        # loop — every other endpoint (including the run's websocket) shares it.
+        started = await asyncio.to_thread(
+            emulator.Emulator.start, body.get("avd"), headless=bool(body.get("headless")))
+    except (RuntimeError, TimeoutError) as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    _emulator = started
+    _cfg.serial = started.serial
+    return JSONResponse({"serial": started.serial, "avd": started.avd})
+
+
+@app.post("/api/emulator/stop")
+async def api_emulator_stop() -> JSONResponse:
+    """Shut down an emulator this dashboard booted."""
+    global _emulator
+    if _emulator is None:
+        return JSONResponse({"error": "no emulator started from here"}, status_code=404)
+    await asyncio.to_thread(_emulator.stop)
+    _emulator, _cfg.serial = None, None
+    return JSONResponse({"stopped": True})
 
 
 @app.get("/api/state")
@@ -175,6 +249,7 @@ async def api_state() -> JSONResponse:
     ev = _read_json(run_dir / "eval.json")
     screens_dir = run_dir / "screens"
     screens = sorted(p.name for p in screens_dir.glob("*.png")) if screens_dir.exists() else []
+    _attach_remediation(trace, run_dir)
     return JSONResponse(
         {
             "running": _run_started,
@@ -183,8 +258,38 @@ async def api_state() -> JSONResponse:
             "trace": trace,
             "eval": ev,
             "screens": screens,
+            "fix_backend": _fix_backend_name(),
         }
     )
+
+
+def _fix_backend_name() -> str:
+    """The coding agent that Tier 2 would use to write the patch (FIX_BACKEND)."""
+    try:
+        from .fix_backend import backend_name
+        return backend_name()
+    except Exception:
+        return "prompt"
+
+
+def _attach_remediation(trace, run_dir: Path) -> None:
+    """Enrich each bug in ``trace`` with its remediation ladder artifacts.
+
+    Tier 0 (``bug_NNN.md``) and Tier 1 (``bug_NNN.prompt.md``) are written for
+    every bug by the reporter; Tier 2 (``bug_NNN.fix.json``) exists only once the
+    autofix pipeline has run. Bugs and report files share a 1-based order.
+    """
+    if not trace or not isinstance(trace.get("bugs"), list):
+        return
+    reports = run_dir / "reports"
+    for i, bug in enumerate(trace["bugs"], 1):
+        base = reports / f"bug_{i:03d}"
+        t1 = base.with_suffix(".prompt.md")
+        t0 = reports / f"bug_{i:03d}.md"
+        fix = reports / f"bug_{i:03d}.fix.json"
+        bug["tier1_prompt"] = t1.read_text() if t1.exists() else None
+        bug["tier0_report"] = t0.read_text() if t0.exists() else None
+        bug["tier2_fix"] = _read_json(fix)
 
 
 @app.get("/api/screen/{name}")
