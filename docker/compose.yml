@@ -29,9 +29,14 @@ services:
       HUGGING_FACE_HUB_TOKEN: ${HF_TOKEN:-}
     ports:
       - "127.0.0.1:${VLLM_PORT:-8000}:8000"
-    # vLLM shares tensors between worker processes over /dev/shm, and the 64 MB
-    # default is far too small — it shows up as a hang or a bus error at load.
-    ipc: host
+    # vLLM shares tensors between worker processes over /dev/shm, and Docker's
+    # 64 MB default is far too small — it surfaces as a hang or a bus error
+    # during load. The documented remedy is `ipc: host`, but that shares the
+    # host's IPC namespace and is commonly forbidden on managed hosts (an
+    # opa-docker-authz policy rejects it outright). Sizing /dev/shm for this
+    # container alone achieves the same thing without the namespace, and is
+    # ample for the single-GPU, tensor-parallel-1 case here.
+    shm_size: ${VLLM_SHM_SIZE:-8gb}
     command:
       - --model=${VLLM_MODEL:-Qwen/Qwen3-VL-8B-Instruct}
       # A stable alias, so switching checkpoints never touches Gremlin's config.
