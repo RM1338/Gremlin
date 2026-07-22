@@ -13,37 +13,51 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
-if [ -e .env ]; then
-  echo ".env already exists — leaving it alone. Current settings:"
-  grep -vE '^\s*#|^\s*$' .env | sed 's/^/   /'
-  exit 0
-fi
+[ -e .env ] || cp .env.example .env
 
-cp .env.example .env
+# Add a key only if it is not already set, so an existing .env is topped up
+# rather than either clobbered or — the earlier bug — left missing the values
+# the container cannot start correctly without.
+ensure() {
+  local key=$1 val=$2
+  if grep -qE "^\s*${key}=" .env; then
+    printf '   %-16s already set, kept\n' "$key"
+  else
+    printf '%s=%s\n' "$key" "$val" >> .env
+    printf '   %-16s added: %s\n' "$key" "$val"
+  fi
+}
 
 # How much of the GPU to claim. On a machine where another service may want the
 # card, taking all of it is the antisocial default; 0.60 of a 32 GB card is
 # ~19.5 GB, which runs the 8B with room for context and leaves the rest free.
 frac=0.60
-total=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1 || echo "")
-others=$(nvidia-smi --query-compute-apps=pid --format=csv,noheader 2>/dev/null | grep -c . || true)
+# nvidia-smi prints its failure message on stdout on some builds, so the reply
+# is only trusted when it is actually a number — otherwise its complaint would
+# be read as a VRAM size, and as a running process.
+total=$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1 | grep -xE '[0-9]+' || true)
+others=$(nvidia-smi --query-compute-apps=pid --format=csv,noheader 2>/dev/null | grep -cxE '[0-9]+' || true)
 if [ "${others:-0}" -gt 0 ]; then
   frac=0.35
   echo "NOTE: another process is on the GPU — taking a smaller share ($frac)."
 fi
 
-{
-  echo ""
-  echo "# ---- Written by scripts/lab_env.sh ----"
-  echo "LLM_PROVIDER=local"
-  # Keeps files the container writes into the repo owned by you, not root.
-  printf 'UID=%s\n' "$(id -u)"
-  printf 'GID=%s\n' "$(id -g)"
-  echo "VLLM_GPU_FRAC=$frac"
-} >> .env
+echo "Checking .env:"
+ensure LLM_PROVIDER local
+# Without these the container runs as uid 1000 while the bind-mounted repo is
+# owned by you, and every write into /workspace fails with permission denied.
+ensure UID "$(id -u)"
+ensure GID "$(id -g)"
+ensure VLLM_GPU_FRAC "$frac"
 
-echo "Wrote .env:"
+echo
+echo "Active settings:"
 grep -vE '^\s*#|^\s*$' .env | sed 's/^/   /'
 echo
-[ -n "$total" ] && echo "GPU has ${total} MiB total; this run may use up to ~$(awk "BEGIN{printf \"%d\", $total*$frac}") MiB."
-echo "Next:  docker compose up -d vllm"
+[ -n "$total" ] && echo "GPU has ${total} MiB total; a vLLM run may use up to ~$(awk "BEGIN{printf \"%d\", $total*$frac}") MiB."
+cat <<'EOF'
+
+Next:
+  docker compose build gremlin     # if UID or GID changed just now
+  docker compose up -d ollama
+EOF
