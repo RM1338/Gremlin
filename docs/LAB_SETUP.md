@@ -237,6 +237,41 @@ reissuing costs a minute.
 
 ## Devices
 
+### When the host forbids /dev/kvm
+
+An emulator needs `/dev/kvm`, and mapping a device into a container is a
+privilege managed hosts often refuse — on `knuth` an `opa-docker-authz` policy
+rejects `--device` outright. Nothing in the container can work around that, and
+it should not try to.
+
+Use a real phone over **wireless adb** instead. It needs no device mapping and
+no USB, so there is nothing for a policy to object to — and testing on real
+hardware is a stronger result than an emulator anyway.
+
+On the phone: Settings → Developer options → **Wireless debugging**. Then,
+inside the container:
+
+```bash
+# First time only — the pairing dialog shows its own port and a 6-digit code.
+bash scripts/connect_phone.sh 10.1.2.3:41234 123456
+
+# Every time after — note this is the port on the main Wireless debugging
+# screen, which is NOT the pairing port.
+bash scripts/connect_phone.sh 10.1.2.3:37000
+```
+
+Two ports are involved and confusing them is the usual reason a first attempt
+fails. The pairing port and code change every time that dialog is opened; the
+connect port is stable while wireless debugging stays on.
+
+The phone must be reachable from the container — same network, and client
+isolation off. On a locked-down campus wifi that may not hold, in which case
+the remaining option is to ask an admin to permit `--device /dev/kvm` for your
+account. That is a narrow request: it is not privileged mode and grants no
+host access beyond the KVM interface.
+
+### USB
+
 The container reaches a **USB-attached phone** through an adb server on the
 host — run `adb start-server` on the host once, and the `ADB_SERVER_SOCKET`
 setting in the compose file does the rest. This keeps the USB bus out of the

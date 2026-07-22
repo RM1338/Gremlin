@@ -140,10 +140,11 @@ services:
       LLM_PROVIDER: ${LLM_PROVIDER:-local}
       LOCAL_BASE_URL: ${LOCAL_BASE_URL:-http://vllm:8000/v1}
       LOCAL_MODEL: ${LOCAL_MODEL:-gremlin-vision}
-      # Lets the container talk to an adb server running on the host, which is
-      # how a USB-attached phone is reached without handing the container the
-      # USB bus. Start it on the host with `adb start-server` first.
-      ADB_SERVER_SOCKET: ${ADB_SERVER_SOCKET:-tcp:host.docker.internal:5037}
+      # Empty by default, so adb runs its own server inside the container and
+      # reaches a phone over the network with `adb connect`. Point it at a host
+      # adb server (tcp:host.docker.internal:5037) only if there is one — a USB
+      # phone needs that, because handing a container the USB bus needs root.
+      ADB_SERVER_SOCKET: ${ADB_SERVER_SOCKET:-}
     extra_hosts:
       # Docker does not define host.docker.internal on Linux by default.
       - "host.docker.internal:host-gateway"
