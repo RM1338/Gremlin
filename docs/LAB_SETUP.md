@@ -94,8 +94,8 @@ the size. Slower per request, which matters for published benchmark numbers
 but not for getting the pipeline working:
 
 ```bash
-docker compose -f docker/compose.yml up -d ollama
-docker compose -f docker/compose.yml exec ollama ollama pull qwen2.5vl:7b
+docker compose up -d ollama
+docker compose exec ollama ollama pull qwen2.5vl:7b
 # then in .env:
 #   LOCAL_BASE_URL=http://ollama:11434/v1
 #   LOCAL_MODEL=qwen2.5vl:7b
@@ -113,8 +113,8 @@ Check what the driver supports with `nvidia-smi` (top right).
 ### vLLM specifically
 
 ```bash
-docker compose -f docker/compose.yml up -d vllm
-docker compose -f docker/compose.yml logs -f vllm
+docker compose up -d vllm
+docker compose logs -f vllm
 ```
 
 The first start downloads the weights and can take a long while — tens of GB,
@@ -133,7 +133,7 @@ checkpoint under, so changing checkpoints later never touches Gremlin's config.
 ## 3. Get a shell and authenticate Claude Code
 
 ```bash
-docker compose -f docker/compose.yml run --rm gremlin
+docker compose run --rm gremlin
 ```
 
 You are now inside the container, in `/workspace`. Log in once:
@@ -186,7 +186,7 @@ VLLM_MODEL=Qwen/Qwen3-VL-32B-Instruct-AWQ
 VLLM_MAX_LEN=8192
 ```
 
-then `docker compose -f docker/compose.yml up -d --force-recreate vllm`.
+then `docker compose up -d --force-recreate vllm`.
 
 Pin the image tag in `.env` (`VLLM_IMAGE=vllm/vllm-openai:X.Y.Z`) once you have
 a working combination. Benchmark numbers against a floating `latest` are not
@@ -250,7 +250,7 @@ depend on it.
 ## Blackwell notes
 
 The RTX 5090 is `sm_120` and needs a 570+ driver with a CUDA 12.8+ runtime.
-This is why `docker/compose.yml` floats `vllm/vllm-openai:latest` rather than
+This is why `compose.yml` floats `vllm/vllm-openai:latest` rather than
 pinning: older vLLM images predate both Blackwell kernels and the Qwen3-VL
 architecture, and fail with either "no kernel image is available for execution"
 or an unrecognised model type.

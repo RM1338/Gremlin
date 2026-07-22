@@ -6,8 +6,8 @@
 # network at http://vllm:8000/v1, which is the whole of the integration —
 # exactly the "configuration-only" swap Objective 2 of PROPOSAL.md promises.
 #
-#   docker compose -f docker/compose.yml up -d vllm      # start the model
-#   docker compose -f docker/compose.yml run --rm gremlin  # get a shell
+#   docker compose up -d vllm      # start the model
+#   docker compose run --rm gremlin  # get a shell
 #
 # Run from the repo root. Every tunable below is read from .env.
 
@@ -18,8 +18,8 @@ services:
   # Inference backend. Pick one; both serve the same OpenAI-compatible API,
   # so gremlin/local.py talks to either without a code change.
   #
-  #   docker compose -f docker/compose.yml up -d ollama   # easy path
-  #   docker compose -f docker/compose.yml up -d vllm     # faster, fussier
+  #   docker compose up -d ollama   # easy path
+  #   docker compose up -d vllm     # faster, fussier
   #
   # Both sit behind profiles so neither starts by accident; naming one on the
   # command line is enough to bring it up.
@@ -117,14 +117,14 @@ services:
 
   gremlin:
     build:
-      context: ..
+      context: .
       dockerfile: docker/Dockerfile
       args:
         UID: ${UID:-1000}
         GID: ${GID:-1000}
     volumes:
       # The repo itself, live — edits inside the container are edits on disk.
-      - ..:/workspace
+      - .:/workspace
       # Claude Code's login, kept off the bind mount so a rebuild never loses it.
       - claude-config:/home/gremlin/.claude
       # Git identity and any stored credential, likewise kept off the bind

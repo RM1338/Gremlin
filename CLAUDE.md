@@ -23,7 +23,7 @@ it right now.
    the compose project `gremlin`:
 
    ```
-   docker compose -f docker/compose.yml <command>
+   docker compose <command>
    ```
 
    Bare `docker stop`, `docker rm`, or `docker kill` are not scoped to this
@@ -86,14 +86,14 @@ Get a shell (the repo is bind-mounted at `/workspace`; edits here are edits on
 the host):
 
 ```
-docker compose -f docker/compose.yml run --rm gremlin
+docker compose run --rm gremlin
 ```
 
 Inference backend — started once, left running:
 
 ```
-docker compose -f docker/compose.yml up -d ollama     # CUDA 12 friendly
-docker compose -f docker/compose.yml up -d vllm       # faster, needs CUDA 13
+docker compose up -d ollama     # CUDA 12 friendly
+docker compose up -d vllm       # faster, needs CUDA 13
 ```
 
 Then, inside the container:

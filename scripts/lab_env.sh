@@ -46,4 +46,4 @@ echo "Wrote .env:"
 grep -vE '^\s*#|^\s*$' .env | sed 's/^/   /'
 echo
 [ -n "$total" ] && echo "GPU has ${total} MiB total; this run may use up to ~$(awk "BEGIN{printf \"%d\", $total*$frac}") MiB."
-echo "Next:  docker compose -f docker/compose.yml up -d vllm"
+echo "Next:  docker compose up -d vllm"

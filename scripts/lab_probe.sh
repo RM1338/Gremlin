@@ -64,7 +64,7 @@ if [ "$running" -gt 0 ]; then
   info "$running container(s) already running — leave them alone:"
   docker ps --format '  {{.Names}}  {{.Image}}  ({{.Status}})' 2>/dev/null | sed 's/^/     /'
   info ""
-  info "Nothing in docker/compose.yml touches them: compose only ever acts on"
+  info "Nothing in compose.yml touches them: compose only ever acts on"
   info "its own project ('gremlin'), and 'down' is scoped to that project too."
 else
   ok "no other containers running"

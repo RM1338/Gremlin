@@ -29,8 +29,8 @@ from ._env import load_dotenv
 
 load_dotenv()
 
-# Defaults match docker/compose.yml, where the model service is reachable under
-# its compose hostname and is served under a stable alias so that swapping the
+# Defaults match compose.yml, where the model service is reachable under its
+# compose hostname and is served under a stable alias so that swapping the
 # underlying checkpoint never touches Gremlin's configuration.
 BASE_URL = os.environ.get("LOCAL_BASE_URL", "http://vllm:8000/v1").rstrip("/")
 MODEL = os.environ.get("LOCAL_MODEL", "gremlin-vision")
@@ -132,8 +132,8 @@ def generate(prompt: str, image_path: Path | None = None, vision_width: int = 54
             # is open but refusing.
             raise LocalError(
                 f"local model unreachable at {endpoint}: {e.reason}. "
-                "Is the vllm service up and finished loading? "
-                "Check with: docker compose -f docker/compose.yml logs -f vllm"
+                "Is that backend up and finished loading? Check with: "
+                "docker compose ps  /  docker compose logs -f ollama"
             ) from e
 
     try:
