@@ -6,12 +6,16 @@ magic strings. Values can be overridden from the CLI later.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
 
 # Where the developer's Flutter projects live; scanned to build the target list.
-PROJECTS_ROOT = Path.home() / "Projects"
+# Overridable because the containerised install has no developer home to scan —
+# there the repo's own fixtures are the projects, and compose points this at
+# /workspace/fixtures.
+PROJECTS_ROOT = Path(os.environ.get("GREMLIN_PROJECTS_ROOT", Path.home() / "Projects"))
 
 # Default app under test (used when no target is picked). Overridden per-run by
 # gremlin.targets once a Flutter project is selected in the CLI or the console.
@@ -21,7 +25,8 @@ ACTIVITY = "com.scribe.scribe/.MainActivity"
 # Where the selected project's source lives, so the fixer (Tier 2) can be pointed
 # at file:line. Named `scribe_root` in Config for backward-compat; it holds the
 # source root of whatever project is currently selected.
-SCRIBE_ROOT = Path("/home/ronel/Projects/Scribe")
+SCRIBE_ROOT = Path(os.environ.get("GREMLIN_APP_ROOT",
+                                  PROJECTS_ROOT / "Scribe"))
 
 
 @dataclass

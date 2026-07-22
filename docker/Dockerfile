@@ -9,17 +9,24 @@
 
 FROM node:22-bookworm
 
-# adb drives the device or emulator; the rest is the Python toolchain and the
-# git/curl that Claude Code and the fixer's guard-rebuild-replay loop rely on.
+# adb drives the device or emulator; the JDK is what the Android SDK and Gradle
+# run on; the xz/zip/libglu set is Flutter's documented Linux prerequisite. The
+# rest is the Python toolchain and the git/curl that Claude Code and the fixer's
+# guard-rebuild-replay loop rely on.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         python3 \
         python3-venv \
         python3-pip \
         android-tools-adb \
+        openjdk-17-jdk-headless \
         git \
         curl \
         ca-certificates \
         unzip \
+        zip \
+        xz-utils \
+        file \
+        libglu1-mesa \
         less \
     && rm -rf /var/lib/apt/lists/*
 
@@ -46,7 +53,80 @@ ENV PATH="$VIRTUAL_ENV/bin:$PATH"
 COPY requirements.txt /tmp/requirements.txt
 RUN pip install --no-cache-dir -r /tmp/requirements.txt && rm /tmp/requirements.txt
 
+# ---------------------------------------------------------------------------
+# Android SDK
+#
+# gremlin/emulator.py locates `emulator` and `avdmanager` at fixed paths under
+# ANDROID_HOME, so the layout matters more than the install method. Pinned
+# versions rather than "latest": a run whose toolchain moves underneath it
+# cannot produce a reproducible benchmark.
+# ---------------------------------------------------------------------------
+ENV ANDROID_HOME=/opt/android-sdk \
+    ANDROID_SDK_ROOT=/opt/android-sdk \
+    ANDROID_AVD_HOME=/opt/android-avd
+ARG CMDLINE_TOOLS_VERSION=11076708
+ARG ANDROID_API=34
+ARG BUILD_TOOLS=34.0.0
+
+RUN set -eux; \
+    mkdir -p "$ANDROID_HOME/cmdline-tools"; \
+    curl -fsSL -o /tmp/tools.zip \
+      "https://dl.google.com/android/repository/commandlinetools-linux-${CMDLINE_TOOLS_VERSION}_latest.zip"; \
+    unzip -q /tmp/tools.zip -d "$ANDROID_HOME/cmdline-tools"; \
+    # The zip unpacks to `cmdline-tools/`; sdkmanager insists on being under a
+    # version directory named `latest`, and refuses to run otherwise.
+    mv "$ANDROID_HOME/cmdline-tools/cmdline-tools" "$ANDROID_HOME/cmdline-tools/latest"; \
+    rm /tmp/tools.zip
+ENV PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$ANDROID_HOME/emulator:$PATH"
+
+# google_apis rather than google_apis_playstore: the Play variant refuses
+# `adb root`, which the grounding layer needs to read the view hierarchy.
+RUN set -eux; \
+    yes | sdkmanager --licenses >/dev/null; \
+    sdkmanager --install \
+      "platform-tools" \
+      "emulator" \
+      "platforms;android-${ANDROID_API}" \
+      "build-tools;${BUILD_TOOLS}" \
+      "system-images;android-${ANDROID_API};google_apis;x86_64" >/dev/null
+
+# Baked in at build time so a run never waits on AVD creation. ANDROID_AVD_HOME
+# keeps it outside the user's home, which is a volume mount at runtime and
+# would otherwise hide it.
+RUN set -eux; \
+    mkdir -p "$ANDROID_AVD_HOME"; \
+    echo no | avdmanager create avd \
+      -n gremlin \
+      -k "system-images;android-${ANDROID_API};google_apis;x86_64" \
+      -d pixel_6 >/dev/null; \
+    chown -R "${UID}:${GID}" "$ANDROID_AVD_HOME" "$ANDROID_HOME"
+
+# ---------------------------------------------------------------------------
+# Flutter
+#
+# Tier 2 is only trustworthy because a fix is rebuilt and replayed before it is
+# accepted (gremlin/gates.py), and the GremlinBench fixtures are Flutter apps —
+# so without a toolchain the ladder stops at Tier 1.
+# ---------------------------------------------------------------------------
+ENV FLUTTER_HOME=/opt/flutter
+ARG FLUTTER_VERSION=3.24.5
+RUN set -eux; \
+    curl -fsSL -o /tmp/flutter.tar.xz \
+      "https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_${FLUTTER_VERSION}-stable.tar.xz"; \
+    tar -xJf /tmp/flutter.tar.xz -C /opt; \
+    rm /tmp/flutter.tar.xz; \
+    # Flutter writes its version stamp and pub cache inside its own tree, so it
+    # has to be writable by the user that runs it, not just readable.
+    chown -R "${UID}:${GID}" "$FLUTTER_HOME"
+ENV PATH="$FLUTTER_HOME/bin:$PATH"
+
 USER gremlin
+
+# Warmed as the final user so the caches land with the right ownership. Also
+# fails the build early if the toolchain is broken, rather than at first use.
+RUN flutter config --no-analytics >/dev/null \
+    && flutter config --android-sdk "$ANDROID_HOME" >/dev/null \
+    && flutter precache --android --no-ios --no-linux --no-web >/dev/null
 WORKDIR /workspace
 
 # Keeps the Claude Code login on a named volume, so authenticating once

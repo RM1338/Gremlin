@@ -57,6 +57,8 @@ ensure LOCAL_MODEL "${served:-qwen3-vl:32b}"
 ensure UID "$(id -u)"
 ensure GID "$(id -g)"
 ensure VLLM_GPU_FRAC "$frac"
+# The emulator reaches /dev/kvm by group, and that group's id is host-specific.
+ensure KVM_GID "$(stat -c %g /dev/kvm 2>/dev/null || echo 104)"
 
 echo
 echo "Active settings:"
