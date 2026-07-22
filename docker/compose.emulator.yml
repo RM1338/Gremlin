@@ -15,7 +15,9 @@ services:
   gremlin:
     devices:
       # Hardware acceleration for the emulator. Without it QEMU falls back to
-      # software CPU emulation, which is slow enough that a run times out.
+      # emulating the guest CPU in software — which Gremlin now detects and
+      # allows (see the software-emulation notes in docs/LAB_SETUP.md), at the
+      # cost of a boot measured in tens of minutes.
       # This is a single device mapping, not a privileged container.
       - /dev/kvm:/dev/kvm
     group_add:

@@ -74,7 +74,14 @@ def _resolve_device(args) -> "emu.Emulator | None":
     if status.problem:
         sys.exit(f"Cannot start an emulator: {status.problem}")
     name = args.avd or status.avds[0]
-    print(f"booting emulator {name} (this takes a minute on a cold start)...")
+    if emu.kvm_available():
+        print(f"booting emulator {name} (this takes a minute on a cold start)...")
+    else:
+        # Otherwise this looks like a hang. Say so up front, with the reason.
+        print(f"booting emulator {name} WITHOUT hardware acceleration — /dev/kvm "
+              "is not available here, so the guest CPU is emulated in software.")
+        print("  A cold boot can take 20-30 minutes. Once up, it stays up: "
+              "re-run with the emulator still running and Gremlin adopts it.")
     try:
         started = emu.Emulator.start(name, headless=args.headless)
     except (RuntimeError, TimeoutError) as e:

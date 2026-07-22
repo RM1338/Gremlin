@@ -295,10 +295,31 @@ fails. The pairing port and code change every time that dialog is opened; the
 connect port is stable while wireless debugging stays on.
 
 The phone must be reachable from the container — same network, and client
-isolation off. On a locked-down campus wifi that may not hold, in which case
-the remaining option is to ask an admin to permit `--device /dev/kvm` for your
-account. That is a narrow request: it is not privileged mode and grants no
-host access beyond the KVM interface.
+isolation off. On a locked-down campus wifi that may not hold.
+
+### Software emulation, when there is no phone either
+
+A dockerised Android emulator does **not** get around this. `budtmo/docker-android`,
+Google's `android-emulator-container-scripts` and the rest all ask for
+`--device /dev/kvm`, which is the exact call the policy refuses; the rejection
+is per-account at the Docker API, so a different image changes nothing.
+
+What does work without any permission is dropping acceleration entirely. QEMU
+then emulates the guest CPU instruction by instruction, which is unusable by
+hand but tolerable here, because Gremlin waits seconds on a vision-model call
+between one tap and the next — the emulator is idle for most of a run.
+
+`Emulator.start` detects this and adds `-accel off` on its own when `/dev/kvm`
+is unreadable, so `python run.py --emulator --headless` needs no extra flag.
+Budget 20-30 minutes for the cold boot, and raise
+`GREMLIN_SOFTWARE_BOOT_TIMEOUT` (seconds, default 1800) if that is not enough.
+Leave the emulator up afterwards and later runs adopt it rather than re-booting.
+
+Treat this as a fallback for when no phone is reachable, not as the benchmark
+configuration — timings taken this way say more about QEMU than about Gremlin.
+The clean fix remains asking an admin to permit `--device /dev/kvm` for your
+account, a narrow request that is not privileged mode and grants no host access
+beyond the KVM interface. See `docs/ADMIN_REQUEST.md`.
 
 ### USB
 

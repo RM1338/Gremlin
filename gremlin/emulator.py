@@ -45,6 +45,22 @@ _SDK_CANDIDATES = (
 # on a machine without KVM genuinely can take minutes, so this is generous.
 BOOT_TIMEOUT = 300.0
 
+# Software emulation is roughly an order of magnitude slower to boot, and a cold
+# first boot is the worst case of all, so the accelerated timeout is nowhere near
+# enough. Overridable, because how bad this gets depends entirely on the host.
+SOFTWARE_BOOT_TIMEOUT = float(os.environ.get("GREMLIN_SOFTWARE_BOOT_TIMEOUT", 1800.0))
+
+
+def kvm_available() -> bool:
+    """Whether hardware acceleration can actually be used from this process.
+
+    Existing is not enough: in a container /dev/kvm is only present when the host
+    allowed it to be mapped in, and readable only if the process is in the owning
+    group. Both fail quietly and separately, so test the access rather than the
+    path.
+    """
+    return os.access("/dev/kvm", os.R_OK | os.W_OK)
+
 
 def sdk_root() -> Path | None:
     """The Android SDK directory, from the environment or the usual places."""
@@ -202,6 +218,20 @@ class Emulator:
         if headless:
             # No window — for CI, or a dev box driving this over SSH.
             cmd += ["-no-window", "-gpu", "swiftshader_indirect"]
+
+        if not kvm_available():
+            # QEMU emulates the guest CPU instruction by instruction. That is far
+            # too slow to use by hand, but Gremlin spends seconds in a vision-model
+            # call between one tap and the next, so the emulator is idle for most
+            # of a run and its slowness is largely hidden. Worth attempting on a
+            # host that refuses to map /dev/kvm, where the alternative is no
+            # emulator at all — but treat it as a fallback, not a target.
+            cmd += ["-accel", "off"]
+            # An unaccelerated guest is slow enough that the emulator's simulated
+            # network latency becomes a real share of each step.
+            cmd += ["-netdelay", "none", "-netspeed", "full"]
+            if timeout == BOOT_TIMEOUT:
+                timeout = SOFTWARE_BOOT_TIMEOUT
 
         # The emulator explains its own refusals ("not enough disk space", "no
         # KVM permission") on stdout and then exits. Keeping that output is the
