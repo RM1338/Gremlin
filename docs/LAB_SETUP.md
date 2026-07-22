@@ -49,6 +49,29 @@ Read the output before going further. Three lines decide everything:
 `/dev/kvm` failing is not a blocker for the model work — it only affects
 running the Android emulator inside the container. See "Devices" below.
 
+### Sharing the workstation
+
+Nothing in this setup stops, removes, or restarts anyone else's containers.
+`docker run --rm` removes only the throwaway container that command creates,
+and `docker compose ... down` acts only on this project (`name: gremlin` in the
+compose file), never on containers it did not start.
+
+The way to disturb someone here is not containers, it is **VRAM**. The compose
+file asks for 90% of the card, so if another user's job is already on the GPU,
+starting `vllm` will disrupt it. The probe reports this under "GPU on the
+host". If it says the GPU is already in use, either wait, or take a small
+share and tell whoever owns the job:
+
+```bash
+# in .env
+VLLM_MODEL=Qwen/Qwen3-VL-8B-Instruct
+VLLM_GPU_FRAC=0.35
+```
+
+A port clash (8000, 8080, 5173) is harmless by comparison — compose fails to
+start and nothing else is affected. Change `VLLM_PORT`, `CONSOLE_PORT` or
+`VITE_PORT` in `.env` if the probe flags one.
+
 ## 1. Configure
 
 ```bash

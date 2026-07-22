@@ -54,10 +54,48 @@ else
   no "'docker compose' missing — the stack is defined as a compose file"
 fi
 
+hr "Who else is using this machine"
+# A shared workstation is the normal case, and the two ways to disturb someone
+# else's work are taking a port they hold or taking VRAM they are mid-way
+# through using. Neither is caused by starting containers; both are caused by
+# starting *these* containers without looking first.
+running=$(docker ps -q 2>/dev/null | wc -l)
+if [ "$running" -gt 0 ]; then
+  info "$running container(s) already running — leave them alone:"
+  docker ps --format '  {{.Names}}  {{.Image}}  ({{.Status}})' 2>/dev/null | sed 's/^/     /'
+  info ""
+  info "Nothing in docker/compose.yml touches them: compose only ever acts on"
+  info "its own project ('gremlin'), and 'down' is scoped to that project too."
+else
+  ok "no other containers running"
+fi
+# Our compose binds these on the loopback interface. A clash is a startup error
+# rather than damage, but it is better seen now.
+for p in 8000 8080 5173; do
+  if command -v ss >/dev/null 2>&1 && ss -ltn 2>/dev/null | grep -q ":$p "; then
+    no "port $p is already in use — change it in .env before starting"
+  fi
+done
+
 hr "GPU on the host"
 if command -v nvidia-smi >/dev/null 2>&1; then
   nvidia-smi --query-gpu=name,memory.total,driver_version,compute_cap \
              --format=csv,noheader 2>/dev/null | sed 's/^/       /'
+  # The number that decides whether starting vLLM is antisocial: if someone
+  # else's job already holds VRAM, claiming 90% of the card will disrupt it.
+  used=$(nvidia-smi --query-gpu=memory.used --format=csv,noheader,nounits 2>/dev/null | head -1)
+  procs=$(nvidia-smi --query-compute-apps=pid,used_memory --format=csv,noheader 2>/dev/null)
+  if [ -n "$procs" ]; then
+    no "the GPU is ALREADY IN USE by someone else (${used} MiB held):"
+    echo "$procs" | sed 's/^/       /'
+    info ""
+    info "Do not start vllm at the default settings — it claims 90% of VRAM"
+    info "and would disrupt that work. Either wait, or set a small share in"
+    info ".env, e.g. VLLM_GPU_FRAC=0.35 with VLLM_MODEL=Qwen/Qwen3-VL-8B-Instruct,"
+    info "and confirm with whoever owns the running job first."
+  else
+    ok "no other process is using the GPU (${used:-0} MiB held) — safe to claim it"
+  fi
   drv=$(nvidia-smi --query-gpu=driver_version --format=csv,noheader 2>/dev/null | head -1 | cut -d. -f1)
   # Blackwell (RTX 50xx, sm_120) needs a 570+ driver and a CUDA 12.8+ runtime.
   if [ -n "${drv:-}" ] && [ "$drv" -ge 570 ] 2>/dev/null; then
