@@ -42,8 +42,16 @@ if [ "${others:-0}" -gt 0 ]; then
   echo "NOTE: another process is on the GPU — taking a smaller share ($frac)."
 fi
 
+# Prefer whatever the running Ollama actually serves, so LOCAL_MODEL cannot
+# drift from the tag that was pulled — a mismatch is a 404 at the first step.
+served=$(curl -s --max-time 3 "localhost:${OLLAMA_PORT:-11435}/api/tags" 2>/dev/null \
+         | grep -o '"name":"[^"]*"' | head -1 | cut -d'"' -f4 || true)
+[ -n "$served" ] && echo "Ollama is serving: $served"
+
 echo "Checking .env:"
 ensure LLM_PROVIDER local
+ensure LOCAL_BASE_URL "http://ollama:11434/v1"
+ensure LOCAL_MODEL "${served:-qwen3-vl:32b}"
 # Without these the container runs as uid 1000 while the bind-mounted repo is
 # owned by you, and every write into /workspace fails with permission denied.
 ensure UID "$(id -u)"
