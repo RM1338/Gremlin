@@ -1,7 +1,8 @@
 """Provider dispatcher for the exploration policy's vision calls.
 
 Which backend answers each step is chosen by the `LLM_PROVIDER` env var
-(default "gemini"); "groq" is the alternative when Gemini's free quota is spent.
+(default "gemini"); "groq" is the alternative when Gemini's free quota is spent,
+and "local" is a self-hosted vision model with no quota at all.
 Provider-specific errors are normalized to ModelError / ModelQuotaError so the
 explorer can end a run gracefully regardless of backend.
 """
@@ -33,6 +34,13 @@ def provider() -> str:
 
 def generate(prompt: str, image_path: Path | None = None, vision_width: int = 540) -> str:
     """Route one vision turn to the configured provider."""
+    if provider() == "local":
+        from . import local
+        try:
+            return local.generate(prompt, image_path=image_path, vision_width=vision_width)
+        except local.LocalError as e:
+            raise ModelError(str(e)) from e
+
     if provider() == "groq":
         from . import groq
         try:
