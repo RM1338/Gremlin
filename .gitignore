@@ -14,7 +14,9 @@ frontend/node_modules/
 frontend/dist/
 
 # editor / tooling
-.claude/settings.local.json
+# Covers the atomic-write temp files (settings.local.json.tmp.NNNN.XXXX) as well
+# as the settings themselves — the bare name alone let one get committed.
+.claude/settings.local.json*
 .DS_Store
 *.log
 
