@@ -125,11 +125,19 @@ services:
     volumes:
       # The repo itself, live — edits inside the container are edits on disk.
       - .:/workspace
-      # Claude Code's login, kept off the bind mount so a rebuild never loses it.
-      - claude-config:/home/gremlin/.claude
-      # Git identity and any stored credential, likewise kept off the bind
-      # mount — writing them into the repo would risk committing them.
-      - git-state:/home/gremlin/.gitstate
+      # Claude Code's login and the git identity, kept off the repo bind mount so
+      # a rebuild never loses them and so neither can be committed by accident.
+      #
+      # Host directories rather than named volumes, because a named volume whose
+      # mount point does not already exist in the image is created root-owned,
+      # and the container runs unprivileged — `claude` then cannot save its token
+      # and reports "Not logged in" straight after a successful login. A path
+      # under your own home is created with your uid, so it is writable without
+      # anyone needing root. Create them once:
+      #
+      #   mkdir -p ~/.gremlin/claude ~/.gremlin/gitstate && chmod 700 ~/.gremlin
+      - ${HOME}/.gremlin/claude:/home/gremlin/.claude
+      - ${HOME}/.gremlin/gitstate:/home/gremlin/.gitstate
     environment:
       # Points git's global config at the persisted volume, so `git config
       # --global` survives the container being thrown away by `run --rm`.
@@ -165,5 +173,3 @@ services:
 volumes:
   hf-cache:
   ollama-models:
-  claude-config:
-  git-state:

@@ -133,4 +133,10 @@ WORKDIR /workspace
 # survives every later rebuild of this image.
 ENV CLAUDE_CONFIG_DIR=/home/gremlin/.claude
 
+# Mount points for the two host directories compose binds here. Created as the
+# unprivileged user so they are writable even when nothing is mounted over them
+# — a container run without those binds still gets a usable, if ephemeral, home
+# rather than a `claude` that cannot save its token.
+RUN mkdir -p /home/gremlin/.claude /home/gremlin/.gitstate
+
 CMD ["bash"]

@@ -142,11 +142,41 @@ You are now inside the container, in `/workspace`. Log in once:
 claude
 ```
 
-Follow the browser flow. The login is stored on a named volume, so it survives
-rebuilding the image — you will not have to repeat this.
+Follow the browser flow. The login is stored under your home directory on the
+workstation, so it survives rebuilding the image — you will not have to repeat
+this.
 
 Claude Code is not just your interface here: `gremlin/llm.py:31` shells out to
 `claude -p` to apply Tier-2 fixes, so the run itself fails without this login.
+
+There is no browser inside the container, so `claude` prints a URL and waits for
+you to paste the code back. Open the URL in the workstation's own browser; do
+not expect the localhost callback to find its way in.
+
+Claude Code's state lives in `~/.gremlin/claude` on the workstation, so create
+that before the first shell:
+
+```bash
+mkdir -p ~/.gremlin/claude ~/.gremlin/gitstate && chmod 700 ~/.gremlin
+```
+
+**If the login will not stick** — `/login` reappears, or the session warns that
+transcript writes are failing with `EACCES` — the directory behind
+`/home/gremlin/.claude` is not writable by the container's user. Check both
+halves from inside the container:
+
+```bash
+id -u; ls -ld /home/gremlin/.claude
+```
+
+The owner shown there must match that uid. It will not if the mount is still a
+named volume: Docker creates a volume's mount point root-owned when the path is
+absent from the image, and nothing unprivileged can write into it afterwards.
+The host directories above avoid that, because your own account creates them.
+
+Note that the container's uid comes from the `UID`/`GID` build args and is baked
+in at build time, so changing it means `docker compose build gremlin`, not just
+a new `run`.
 
 ## 4. Run it
 
