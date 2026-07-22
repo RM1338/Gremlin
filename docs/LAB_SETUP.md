@@ -85,6 +85,33 @@ owned by you instead of by root.
 
 ## 2. Start the model
 
+Two backends are available and they serve the same API, so `gremlin/local.py`
+talks to either without a code change. Pick by what the host driver allows.
+
+**Ollama — start here.** It ships CUDA 12 builds, so it runs on drivers that
+current vLLM images have moved past, and its GGUF weights are a fraction of
+the size. Slower per request, which matters for published benchmark numbers
+but not for getting the pipeline working:
+
+```bash
+docker compose -f docker/compose.yml up -d ollama
+docker compose -f docker/compose.yml exec ollama ollama pull qwen2.5vl:7b
+# then in .env:
+#   LOCAL_BASE_URL=http://ollama:11434/v1
+#   LOCAL_MODEL=qwen2.5vl:7b
+```
+
+**vLLM — faster, and the right target for benchmarking.** It is fussier about
+the driver: the `latest` image now requires CUDA 13, which needs a 580+ driver.
+On an older driver, pin a CUDA-12 build with `VLLM_IMAGE` in `.env`. If an
+image asks for a CUDA *minor* version slightly above the driver, set
+`NVIDIA_DISABLE_REQUIRE=1` — CUDA is minor-version compatible. That will not
+rescue a CUDA 13 image on a 12.x driver.
+
+Check what the driver supports with `nvidia-smi` (top right).
+
+### vLLM specifically
+
 ```bash
 docker compose -f docker/compose.yml up -d vllm
 docker compose -f docker/compose.yml logs -f vllm

@@ -14,7 +14,52 @@
 name: gremlin
 
 services:
+  # ---------------------------------------------------------------------
+  # Inference backend. Pick one; both serve the same OpenAI-compatible API,
+  # so gremlin/local.py talks to either without a code change.
+  #
+  #   docker compose -f docker/compose.yml up -d ollama   # easy path
+  #   docker compose -f docker/compose.yml up -d vllm     # faster, fussier
+  #
+  # Both sit behind profiles so neither starts by accident; naming one on the
+  # command line is enough to bring it up.
+  # ---------------------------------------------------------------------
+
+  # The pragmatic backend. Ollama ships CUDA 12 builds, so it runs on drivers
+  # that the current vLLM images have already moved past, and it pulls model
+  # weights itself in GGUF form — far smaller than the safetensors vLLM wants.
+  # Slower per request than vLLM, which matters for benchmark numbers but not
+  # for getting the pipeline working.
+  ollama:
+    profiles: ["ollama"]
+    image: ollama/ollama:latest
+    volumes:
+      # Our own model store. Nothing here touches another Ollama on the host.
+      - ollama-models:/root/.ollama
+    ports:
+      # Deliberately not 11434: another Ollama may already hold that port.
+      - "127.0.0.1:${OLLAMA_PORT:-11435}:11434"
+    environment:
+      # Unload the model after a short idle so a shared GPU is given back
+      # rather than held for as long as the container happens to be up.
+      OLLAMA_KEEP_ALIVE: ${OLLAMA_KEEP_ALIVE:-5m}
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    restart: unless-stopped
+
   vllm:
+    profiles: ["vllm"]
     # Blackwell (RTX 5090, sm_120) needs CUDA 12.8+, and Qwen3-VL needs a vLLM
     # recent enough to know the architecture — so this deliberately floats
     # rather than pinning a version that predates either. Pin it once you have
@@ -27,6 +72,13 @@ services:
     environment:
       # Only needed for gated checkpoints; Qwen is Apache-2.0 and open.
       HUGGING_FACE_HUB_TOKEN: ${HF_TOKEN:-}
+      # The runtime refuses to start a container whose declared CUDA
+      # requirement exceeds the host driver. Because CUDA is compatible across
+      # minor versions, an image asking for 12.9 generally runs fine on a 12.8
+      # driver, and setting this to 1 waives the check. It does NOT bridge a
+      # major version: a CUDA 13 image on a 12.x driver will start and then
+      # fail, so use it to cross a minor gap and not as a blanket override.
+      NVIDIA_DISABLE_REQUIRE: ${NVIDIA_DISABLE_REQUIRE:-}
     ports:
       - "127.0.0.1:${VLLM_PORT:-8000}:8000"
     # vLLM shares tensors between worker processes over /dev/shm, and Docker's
@@ -90,12 +142,13 @@ services:
       # The Gremlin console (FastAPI + Vite).
       - "127.0.0.1:${CONSOLE_PORT:-8080}:8080"
       - "127.0.0.1:${VITE_PORT:-5173}:5173"
-    depends_on:
-      vllm:
-        condition: service_healthy
+    # Deliberately no depends_on: the backend is chosen per-run, and the dev
+    # shell must be usable while a model is still downloading — or with no
+    # model at all, for work that does not need one.
     stdin_open: true
     tty: true
 
 volumes:
   hf-cache:
+  ollama-models:
   claude-config:
