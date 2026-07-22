@@ -20,6 +20,24 @@ cd Gremlin
 bash scripts/lab_probe.sh
 ```
 
+### If the machine has no git
+
+Docker is enough on its own — git can run as a container:
+
+```bash
+docker run --rm -u "$(id -u):$(id -g)" -v "$PWD":/w -w /w \
+  alpine/git clone https://github.com/RM1338/Gremlin.git
+cd Gremlin
+```
+
+Keep the `-u` flag. Without it the container runs as root and the cloned files
+land root-owned in your home directory, where without sudo you can neither edit
+nor delete them.
+
+The same trick covers later git work — `alpine/git pull`, `... log`, and so on
+with the identical flags. Simpler, though, is to just use the git already
+inside the `gremlin` container once you are in a shell there.
+
 Read the output before going further. Three lines decide everything:
 
 | Probe line | If it fails |
