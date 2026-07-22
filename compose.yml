@@ -147,16 +147,10 @@ services:
     extra_hosts:
       # Docker does not define host.docker.internal on Linux by default.
       - "host.docker.internal:host-gateway"
-    devices:
-      # Hardware acceleration for the Android emulator. Without it the emulator
-      # either refuses to start or falls back to an ARM image so slow that a
-      # run times out. This is a device mapping, not a privileged container.
-      - /dev/kvm:/dev/kvm
-    group_add:
-      # /dev/kvm is root:kvm 0660, so access is by group, and the group id
-      # differs between hosts. scripts/lab_env.sh reads the real one from the
-      # host; 104 is Debian's default and only a fallback.
-      - "${KVM_GID:-104}"
+    # /dev/kvm is deliberately NOT mapped here. Some managed hosts forbid device
+    # passthrough outright, and a dev shell that will not start is worse than
+    # one without an emulator. Opt in with the overlay when the host allows it:
+    #   docker compose -f compose.yml -f docker/compose.emulator.yml run --rm gremlin
     ports:
       # The Gremlin console (FastAPI + Vite).
       - "127.0.0.1:${CONSOLE_PORT:-8080}:8080"
