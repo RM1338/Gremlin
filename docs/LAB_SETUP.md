@@ -192,6 +192,49 @@ Pin the image tag in `.env` (`VLLM_IMAGE=vllm/vllm-openai:X.Y.Z`) once you have
 a working combination. Benchmark numbers against a floating `latest` are not
 reproducible, which is half the point of hosting the model yourself.
 
+## Pushing your work
+
+`~/Gremlin` on the host and `/workspace` in the container are the same
+directory, so it does not matter which side you commit from.
+
+**From the host**, if it has git, there is nothing to configure — use it as
+normal.
+
+**From inside the container**, set your identity once. It persists, because
+`GIT_CONFIG_GLOBAL` points at the `git-state` volume rather than at a path
+that dies with the container:
+
+```bash
+git config --global user.name  "Your Name"
+git config --global user.email "you@example.com"
+git push        # prompts for username + token
+```
+
+For the password, GitHub wants a **personal access token**, not your account
+password: https://github.com/settings/tokens — a fine-grained token, scoped to
+this one repository, with Contents: read and write, and a short expiry.
+
+### Do not store that token on a shared machine
+
+Git can cache credentials so you stop being prompted. On a workstation you
+share, think before you do:
+
+> Anyone in the `docker` group can read any Docker volume, and on this machine
+> that group is not just you. A token written into a volume — or into
+> `~/.git-credentials` — is readable by every other person with Docker access.
+
+So prefer being prompted, and keep the token short-lived and scoped to this
+repository. If the typing genuinely gets in the way, cache it in memory for a
+session only, which never writes it to disk:
+
+```bash
+git config --global credential.helper 'cache --timeout=3600'
+```
+
+Avoid `credential.helper store`, which writes the token to disk in plain text.
+If a token is ever exposed, revoke it at the same settings page — revoking and
+reissuing costs a minute.
+
 ## Devices
 
 The container reaches a **USB-attached phone** through an adb server on the

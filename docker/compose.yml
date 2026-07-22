@@ -127,7 +127,13 @@ services:
       - ..:/workspace
       # Claude Code's login, kept off the bind mount so a rebuild never loses it.
       - claude-config:/home/gremlin/.claude
+      # Git identity and any stored credential, likewise kept off the bind
+      # mount — writing them into the repo would risk committing them.
+      - git-state:/home/gremlin/.gitstate
     environment:
+      # Points git's global config at the persisted volume, so `git config
+      # --global` survives the container being thrown away by `run --rm`.
+      GIT_CONFIG_GLOBAL: /home/gremlin/.gitstate/gitconfig
       LLM_PROVIDER: ${LLM_PROVIDER:-local}
       LOCAL_BASE_URL: ${LOCAL_BASE_URL:-http://vllm:8000/v1}
       LOCAL_MODEL: ${LOCAL_MODEL:-gremlin-vision}
@@ -152,3 +158,4 @@ volumes:
   hf-cache:
   ollama-models:
   claude-config:
+  git-state:
