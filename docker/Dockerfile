@@ -13,6 +13,12 @@ FROM node:22-bookworm
 # run on; the xz/zip/libglu set is Flutter's documented Linux prerequisite. The
 # rest is the Python toolchain and the git/curl that Claude Code and the fixer's
 # guard-rebuild-replay loop rely on.
+#
+# The libx11/libxcb block down to libfreetype6 is the emulator's. It links its
+# renderer against the X11 client libraries and resolves them at start-up even
+# under -no-window — a missing one does not quietly degrade to headless, it
+# aborts ("Could not open libX11-xcb.so.1, give up") and segfaults before adb
+# ever sees the process. ALSA, PulseAudio and D-Bus come along the same path.
 RUN apt-get update && apt-get install -y --no-install-recommends \
         python3 \
         python3-venv \
@@ -28,6 +34,27 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         file \
         libglu1-mesa \
         less \
+        libx11-6 \
+        libx11-xcb1 \
+        libxcb1 \
+        libxcomposite1 \
+        libxcursor1 \
+        libxdamage1 \
+        libxext6 \
+        libxfixes3 \
+        libxi6 \
+        libxrandr2 \
+        libxrender1 \
+        libxtst6 \
+        libxkbcommon0 \
+        libnss3 \
+        libasound2 \
+        libpulse0 \
+        libdbus-1-3 \
+        libgl1 \
+        libegl1 \
+        libfontconfig1 \
+        libfreetype6 \
     && rm -rf /var/lib/apt/lists/*
 
 RUN npm install -g @anthropic-ai/claude-code
