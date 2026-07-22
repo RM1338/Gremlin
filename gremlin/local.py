@@ -41,8 +41,20 @@ class LocalError(RuntimeError):
 
 
 def _is_reasoning_model(name: str) -> bool:
-    """Whether this model thinks before answering, and so needs that suppressed."""
-    return any(tag in name.lower() for tag in ("qwen3", "gpt-oss", "deepseek-r1"))
+    """Whether this model thinks before answering, and so needs that suppressed.
+
+    Matching the family name alone is too blunt here. Qwen3-VL ships as both an
+    Instruct and a Thinking variant: the Instruct one answers directly, so
+    sending it a thinking-suppression flag is at best redundant and at worst a
+    400 from a server that does not accept the field.
+    """
+    n = name.lower()
+    if "thinking" in n:
+        return True
+    # A vision-language Instruct checkpoint — answers directly.
+    if "-vl" in n or "vl:" in n or "vl-" in n:
+        return False
+    return any(tag in n for tag in ("qwen3", "gpt-oss", "deepseek-r1"))
 
 
 def _downscale_data_url(path: Path, width: int) -> str:
@@ -78,8 +90,15 @@ def generate(prompt: str, image_path: Path | None = None, vision_width: int = 54
     # Same trap as the Groq backend: a thinking model left to think will spend
     # the entire budget deliberating over which button to tap and return no
     # answer at all. vLLM exposes the switch through the chat template rather
-    # than through Groq's `reasoning_effort` field.
-    if _is_reasoning_model(MODEL) or _is_reasoning_model(os.environ.get("VLLM_MODEL", "")):
+    # than through Groq's `reasoning_effort` field. Not every server accepts
+    # the field, so LOCAL_SUPPRESS_THINKING forces it on ("1") or off ("0")
+    # when the guess is wrong.
+    suppress = os.environ.get("LOCAL_SUPPRESS_THINKING", "auto").strip().lower()
+    if suppress == "auto":
+        suppress_thinking = _is_reasoning_model(MODEL)
+    else:
+        suppress_thinking = suppress in ("1", "true", "yes")
+    if suppress_thinking:
         payload["chat_template_kwargs"] = {"enable_thinking": False}
     body = json.dumps(payload).encode()
 
