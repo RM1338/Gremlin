@@ -51,58 +51,6 @@ it right now.
 If a task seems to require breaking one of these, stop and say so rather than
 finding a way around it.
 
-## Layout
-
-```
-run.py                  CLI entry point for a run
-gremlin/
-  config.py             Config dataclass; per-run settings
-  device.py             adb wrapper — screenshots, taps, app lifecycle
-  emulator.py           boots an AVD when no physical device is attached
-  platforms.py          Flutter vs React Native abstraction
-  grounding.py          accessibility tree -> tappable element list
-  screen_memory.py      perceptual-hash dedup of visited screens
-  vision.py             provider dispatcher, selected by LLM_PROVIDER
-  gemini.py groq.py     hosted vision backends
-  local.py              self-hosted backend (vLLM or Ollama, OpenAI-shaped)
-  llm.py                shared `claude -p` backend for Tier-2 work
-  policy.py explorer.py the observe -> decide -> act loop
-  oracle.py             defect detection from logs and state
-  gates.py              guard / rebuild / replay gates around a fix
-  fixer.py autofix.py   Tier-2 fix orchestration
-  fix_backend.py        pluggable coding agent (prompt|claude|codex|...)
-  replayer.py           deterministic replay of a recorded trace
-  eval.py reporter.py   scoring and run reports
-  dashboard.py web/     FastAPI console
-frontend/               Vite/React console UI
-fixtures/               defect-seeded test apps (Flutter + React Native)
-scripts/lab_probe.sh    read-only survey of a workstation
-docs/LAB_SETUP.md       full container setup notes
-```
-
-## Running
-
-Get a shell (the repo is bind-mounted at `/workspace`; edits here are edits on
-the host):
-
-```
-docker compose run --rm gremlin
-```
-
-Inference backend — started once, left running:
-
-```
-docker compose up -d ollama     # CUDA 12 friendly
-docker compose up -d vllm       # faster, needs CUDA 13
-```
-
-Then, inside the container:
-
-```
-python run.py
-python -m gremlin.dashboard      # console on :8080
-```
-
 ## Model backend
 
 `LLM_PROVIDER` selects the vision backend: `gemini`, `groq`, or `local`. In the
@@ -122,7 +70,6 @@ lives on a named volume.
 
 ## Conventions
 
-- Comments explain *why*, not *what*. Match the density of surrounding code.
 - Backends normalise their own errors to `vision.ModelError` /
   `ModelQuotaError` so the explorer can end a run gracefully.
 - Never commit `.env`, run artifacts under `runs/`, or anything under
