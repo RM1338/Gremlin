@@ -6,12 +6,32 @@
 # and how much of a shared card it is polite to take. Everything else stays at
 # the documented default.
 #
-#   bash scripts/lab_env.sh
+#   bash scripts/lab_env.sh            # ollama (default)
+#   bash scripts/lab_env.sh --vllm     # vLLM instead
+#
+# GREMLIN_BACKEND=vllm works too, and is what scripts/gremlin.sh passes down, so
+# one choice covers both scripts.
 #
 # Refuses to clobber an existing .env — edit that by hand instead.
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
+
+# Which service answers each exploration step. This decides LOCAL_BASE_URL and
+# LOCAL_MODEL together: they are not independent, and a .env pairing an Ollama
+# URL with a vLLM alias is a 404 at the first step rather than an error here.
+BACKEND=${GREMLIN_BACKEND:-ollama}
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --vllm)   BACKEND=vllm;   shift ;;
+    --ollama) BACKEND=ollama; shift ;;
+    *) echo "unknown argument: $1" >&2; exit 1 ;;
+  esac
+done
+case "$BACKEND" in
+  ollama|vllm) ;;
+  *) echo "GREMLIN_BACKEND must be 'ollama' or 'vllm', got '$BACKEND'" >&2; exit 1 ;;
+esac
 
 [ -e .env ] || cp .env.example .env
 
@@ -44,14 +64,29 @@ fi
 
 # Prefer whatever the running Ollama actually serves, so LOCAL_MODEL cannot
 # drift from the tag that was pulled — a mismatch is a 404 at the first step.
-served=$(curl -s --max-time 3 "localhost:${OLLAMA_PORT:-11435}/api/tags" 2>/dev/null \
-         | grep -o '"name":"[^"]*"' | head -1 | cut -d'"' -f4 || true)
-[ -n "$served" ] && echo "Ollama is serving: $served"
+# Meaningless under vLLM, where LOCAL_MODEL is a fixed alias, so it is not
+# worth the three seconds.
+served=""
+if [ "$BACKEND" = ollama ]; then
+  served=$(curl -s --max-time 3 "localhost:${OLLAMA_PORT:-11435}/api/tags" 2>/dev/null \
+           | grep -o '"name":"[^"]*"' | head -1 | cut -d'"' -f4 || true)
+  [ -n "$served" ] && echo "Ollama is serving: $served"
+fi
 
-echo "Checking .env:"
+echo "Checking .env ($BACKEND):"
 ensure LLM_PROVIDER local
-ensure LOCAL_BASE_URL "http://ollama:11434/v1"
-ensure LOCAL_MODEL "${served:-qwen3-vl:32b}"
+if [ "$BACKEND" = vllm ]; then
+  ensure LOCAL_BASE_URL "http://vllm:8000/v1"
+  # Not a checkpoint name: compose serves whatever VLLM_MODEL loads under this
+  # stable alias, so changing the checkpoint never touches Gremlin's config.
+  ensure LOCAL_MODEL "gremlin-vision"
+  # The 8B is the right first target on a 32 GB card; docs/LAB_SETUP.md has the
+  # arithmetic for moving up to a 32B, which needs quantisation to fit at all.
+  ensure VLLM_MODEL "Qwen/Qwen3-VL-8B-Instruct"
+else
+  ensure LOCAL_BASE_URL "http://ollama:11434/v1"
+  ensure LOCAL_MODEL "${served:-qwen3-vl:32b}"
+fi
 # Without these the container runs as uid 1000 while the bind-mounted repo is
 # owned by you, and every write into /workspace fails with permission denied.
 ensure UID "$(id -u)"
@@ -65,9 +100,9 @@ echo "Active settings:"
 grep -vE '^\s*#|^\s*$' .env | sed 's/^/   /'
 echo
 [ -n "$total" ] && echo "GPU has ${total} MiB total; a vLLM run may use up to ~$(awk "BEGIN{printf \"%d\", $total*$frac}") MiB."
-cat <<'EOF'
+cat <<EOF
 
 Next:
   docker compose build gremlin     # if UID or GID changed just now
-  docker compose up -d ollama
+  docker compose --profile $BACKEND up -d $BACKEND
 EOF
