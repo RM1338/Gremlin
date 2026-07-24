@@ -180,6 +180,30 @@ a new `run`.
 
 ## 4. Run it
 
+Steps 1-3 above are what `scripts/gremlin.sh` automates, so once you have read
+them you never need to do them by hand again:
+
+```bash
+bash scripts/gremlin.sh              # a connected phone if there is one,
+                                     # otherwise an emulator
+bash scripts/gremlin.sh --emulator   # force the emulator
+bash scripts/gremlin.sh --usb        # force a USB phone via the host bridge
+bash scripts/gremlin.sh doctor       # check the machine, change nothing
+```
+
+It creates the `~/.gremlin` directories, writes `.env` if absent, starts Ollama
+and waits for it, pulls the model named in `.env` if it is missing, builds the
+image, picks a device, runs the exploration and prints where the reports
+landed. It is idempotent — running it twice does the work once. Flags it does
+not recognise go to `run.py`, so `bash scripts/gremlin.sh --emulator --steps 40`
+does what you would expect.
+
+Every Docker call it makes goes through `docker compose`, which the `name:`
+field scopes to this project. It never stops, removes or prunes anything it did
+not create, and it needs no sudo.
+
+By hand, inside a container shell, the same thing is:
+
 ```bash
 python run.py            # engine
 python -m gremlin.dashboard   # console, then open http://localhost:8080
@@ -304,6 +328,54 @@ Google's `android-emulator-container-scripts` and the rest all ask for
 `--device /dev/kvm`, which is the exact call the policy refuses; the rejection
 is per-account at the Docker API, so a different image changes nothing.
 
+budtmo's own quick start says so outright — note the flag:
+
+```
+docker run -d -p 6080:6080 -e EMULATOR_DEVICE="Samsung Galaxy S10" \
+  -e WEB_VNC=true --device /dev/kvm --name android-container \
+  budtmo/docker-android:emulator_11.0
+```
+
+It is also worth being clear that these images are not a different kind of
+virtualisation. Underneath the noVNC view and the Appium wrapper is the same
+AOSP emulator, the same QEMU and the same adb that `python run.py --emulator`
+drives directly — so they inherit every constraint the plain emulator has, and
+add several GB of image to the Docker root plus a supervisord/VNC/Appium stack
+between Gremlin and the adb serial it wants to control. Forcing software
+emulation inside one gains nothing over the `-accel off` fallback below.
+
+**Retest the door before working around it.** The refusal above is recorded
+from experience on `knuth`, not a law of the machine, and one command settles
+it on any host:
+
+```bash
+docker run --rm --device /dev/kvm alpine ls -l /dev/kvm
+```
+
+If that prints the device node, `--device` is permitted: use
+`docker/compose.emulator.yml` and skip everything below. A policy rejection is
+unmistakable — an authorization-plugin error from the daemon, not a
+permission error from the shell.
+
+**Redroid is the one that looks like an exception, and is not.** It runs Android
+on the host kernel rather than emulating a machine, so it genuinely needs no
+KVM — but that is the trade, not a free lunch: the host kernel must supply
+Android's IPC, and Ubuntu ships it as a module that is not loaded.
+
+```
+$ grep BINDER /boot/config-$(uname -r)
+CONFIG_ANDROID_BINDER_IPC=m
+CONFIG_ANDROID_BINDERFS=m
+$ lsmod | grep binder        # nothing
+$ grep binder /proc/filesystems   # binderfs not registered
+```
+
+Getting from there to a running Redroid needs `modprobe binder_linux` — root on
+the host, which no container flag substitutes for — and then `--privileged`,
+which is a far wider request than the single `--device` already refused. So it
+is strictly worse than KVM here, not better. Redroid is an excellent option on
+a machine where you have root; it is a dead end on this one.
+
 What does work without any permission is dropping acceleration entirely. QEMU
 then emulates the guest CPU instruction by instruction, which is unusable by
 hand but tolerable here, because Gremlin waits seconds on a vision-model call
@@ -324,14 +396,89 @@ beyond the KVM interface. See `docs/ADMIN_REQUEST.md`.
 ### USB
 
 The container reaches a **USB-attached phone** through an adb server on the
-host — run `adb start-server` on the host once, and the `ADB_SERVER_SOCKET`
-setting in the compose file does the rest. This keeps the USB bus out of the
-container, which matters because handing a container USB access needs root.
+host. The USB bus never enters the container, which is the point: handing a
+container USB access needs `--device`, the same call the policy refuses.
 
-Running the **emulator inside the container** additionally needs `/dev/kvm`
-passed through and your user in the `kvm` group. If the probe flagged that,
-treat it as a second, separate ask to the admin — the model work does not
-depend on it.
+```bash
+# On the HOST, with the phone plugged in and USB debugging on:
+bash scripts/host_adb.sh start
+```
+
+That starts an adb server listening on a Unix socket at `~/.gremlin/adb/adb.sock`.
+Then add both lines to `.env` and start the shell as usual:
+
+```bash
+GREMLIN_ADB_DIR=/home/you/.gremlin/adb
+ADB_SERVER_SOCKET=localfilesystem:/run/adb/adb.sock
+```
+
+Inside the container, `adb devices` now lists exactly what the host lists.
+
+**Why a socket and not TCP.** An earlier version of this document said to run
+`adb start-server` and point the container at `tcp:host.docker.internal:5037`.
+That cannot work: the server binds `127.0.0.1`, which no container can reach.
+Nor can it be narrowed to the Docker bridge —
+
+```
+$ adb -L tcp:172.17.0.1:5037 nodaemon server
+could not install *smartsocket* listener: listening on specified hostname
+currently unsupported
+```
+
+— so the only TCP server a container can reach is `adb -a`, binding `0.0.0.0`.
+On a shared lab machine that offers everyone on the network an unauthenticated
+debugging channel into your phone: install packages, read app data, pull files.
+A Unix socket has none of that exposure, is guarded by ordinary directory
+permissions, and needs no privilege to set up.
+
+**Unset `ADB_SERVER_SOCKET` when you are not using the bridge.** adb will not
+start a server on a Unix socket by itself — it tries and fails with `could not
+install *smartsocket* listener` — so leaving the variable set with no server
+running breaks every adb command instead of falling back to a local one.
+
+### The emulator on the host
+
+Worth checking before settling for software emulation, because it is the only
+option here that is both accelerated and needs nothing from the admin.
+
+The policy that refuses `--device /dev/kvm` governs the **Docker API**. It says
+nothing about what you may run in your own shell. So if your account can read
+`/dev/kvm` on the host directly:
+
+```bash
+ls -l /dev/kvm                 # and check for an ACL: getfacl /dev/kvm
+python3 -c "import os; print(os.access('/dev/kvm', os.R_OK|os.W_OK))"
+```
+
+then run the emulator natively on the host at full speed and let the container
+drive it through the socket bridge above — the emulator is just another adb
+serial, so nothing above `gremlin/device.py` can tell the difference.
+
+The host needs the SDK, which installs without root — it is a zip:
+
+```bash
+curl -fsSLO https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+unzip -q commandlinetools-linux-11076708_latest.zip -d "$HOME/android-sdk"
+export ANDROID_HOME="$HOME/android-sdk"
+"$ANDROID_HOME/cmdline-tools/bin/sdkmanager" --sdk_root="$ANDROID_HOME" \
+    platform-tools emulator "system-images;android-34;google_apis;x86_64"
+"$ANDROID_HOME/cmdline-tools/bin/avdmanager" --clear-cache create avd -n gremlin \
+    -k "system-images;android-34;google_apis;x86_64" --device pixel_6
+```
+
+Then, on the host:
+
+```bash
+"$ANDROID_HOME/emulator/emulator" -avd gremlin -no-window -no-audio &
+bash scripts/host_adb.sh start     # the emulator registers with this server
+```
+
+and inside the container `python run.py --serial emulator-5554`. Do **not**
+pass `--emulator`; that asks Gremlin to boot one itself, inside the container,
+where there is no `/dev/kvm`.
+
+Note this needs disk under `$HOME`, not under the Docker root — a system image
+plus AVD is roughly 10-15 GB.
 
 ## Blackwell notes
 

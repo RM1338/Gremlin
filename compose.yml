@@ -135,9 +135,15 @@ services:
       # under your own home is created with your uid, so it is writable without
       # anyone needing root. Create them once:
       #
-      #   mkdir -p ~/.gremlin/claude ~/.gremlin/gitstate && chmod 700 ~/.gremlin
+      #   mkdir -p ~/.gremlin/claude ~/.gremlin/gitstate ~/.gremlin/adb && chmod 700 ~/.gremlin
       - ${HOME}/.gremlin/claude:/home/gremlin/.claude
       - ${HOME}/.gremlin/gitstate:/home/gremlin/.gitstate
+      # The host's adb server socket, for driving a USB phone or a host-side
+      # emulator. Empty and harmless until `scripts/host_adb.sh start` puts a
+      # socket in it. Create it with the others above: a bind mount whose host
+      # directory does not exist is created root-owned, and without sudo you
+      # can then neither write to it nor delete it.
+      - ${GREMLIN_ADB_DIR:-${HOME}/.gremlin/adb}:/run/adb
     environment:
       # Points git's global config at the persisted volume, so `git config
       # --global` survives the container being thrown away by `run --rm`.
@@ -148,10 +154,33 @@ services:
       LLM_PROVIDER: ${LLM_PROVIDER:-local}
       LOCAL_BASE_URL: ${LOCAL_BASE_URL:-http://vllm:8000/v1}
       LOCAL_MODEL: ${LOCAL_MODEL:-gremlin-vision}
-      # Empty by default, so adb runs its own server inside the container and
-      # reaches a phone over the network with `adb connect`. Point it at a host
-      # adb server (tcp:host.docker.internal:5037) only if there is one — a USB
-      # phone needs that, because handing a container the USB bus needs root.
+      # Where the adb client looks for its server.
+      #
+      # The default reaches the host's server through the bind-mounted socket
+      # above, which is what a USB phone needs: the USB bus stays on the host,
+      # because handing a container USB access needs root. It is also how a
+      # host-side emulator is reached, so a host that forbids /dev/kvm in a
+      # container can still be driven with hardware acceleration.
+      #
+      # Deliberately EMPTY by default, and opt-in per run:
+      #
+      #   ADB_SERVER_SOCKET=localfilesystem:/run/adb/adb.sock
+      #
+      # Empty means adb runs its own server inside the container, which is what
+      # a phone on wireless debugging needs (`scripts/connect_phone.sh`). This
+      # cannot be the default, because adb will not auto-start a server on a
+      # Unix socket — it tries and dies with "could not install *smartsocket*
+      # listener". Only an explicit `adb -L localfilesystem:... nodaemon
+      # server` creates one, which is `scripts/host_adb.sh start` on the host.
+      # So pointing this at the socket before that server exists breaks every
+      # adb command instead of falling back.
+      #
+      # NOT tcp:host.docker.internal:5037, which the docs used to say. `adb
+      # start-server` binds 127.0.0.1 and cannot be told to bind only the
+      # Docker bridge ("listening on specified hostname currently
+      # unsupported"), so the one TCP option a container can reach is `adb -a`
+      # — 0.0.0.0, offering the whole lab network a debugging channel into the
+      # phone. The socket is both safer and less setup.
       ADB_SERVER_SOCKET: ${ADB_SERVER_SOCKET:-}
     extra_hosts:
       # Docker does not define host.docker.internal on Linux by default.
