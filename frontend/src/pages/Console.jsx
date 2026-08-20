@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import Logo from "../lib/Logo.jsx";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { Home, Live, List, Bug, Bars, Bolt, Moon, LogOut, Chevron, Check, Screens, Book } from "../lib/icons.jsx";
+import { Home, Live, List, Bug, Bars, Bolt, Stop, LogOut, Chevron, Check, Screens, Book } from "../lib/icons.jsx";
 import { useStore } from "../lib/useStore.js";
-import { loadState, connectWS, startRun, loadTargets, selectTarget,
+import { loadState, connectWS, startRun, stopRun, loadTargets, selectTarget,
   loadDevices, selectDevice, startEmulator, stopEmulator } from "../lib/store.js";
 import { getUser, signOut, initials } from "../lib/auth.js";
 import { formatDuration } from "../lib/notify.js";
@@ -44,11 +44,11 @@ export default function Console() {
     try { await startRun(); nav("/app/live"); }
     catch (e) { flash(e.message); }
   }
-  function toggleTheme() {
-    const next = document.documentElement.dataset.theme === "light" ? "dark" : "light";
-    document.documentElement.dataset.theme = next;
-    localStorage.setItem("gremlin-theme", next);
-    setToast(null); setToast(`${next[0].toUpperCase() + next.slice(1)} theme`); setTimeout(() => setToast(null), 1500);
+  async function onStop() {
+    // The run ends on the step boundary, not on the click, so say so — silence
+    // here reads as a button that did nothing.
+    try { await stopRun(); flash("Stopping after the current step…"); }
+    catch (e) { flash(e.message); }
   }
   function out() { signOut(); nav("/"); }
 
@@ -97,10 +97,15 @@ export default function Console() {
           <DevicePicker st={st} disabled={st.running} onNotify={flash} />
           <TargetPicker targets={st.targets} selected={st.selected} disabled={st.running} onPick={selectTarget}
             defaultOpen={new URLSearchParams(loc.search).has("apps")} />
-          <button className="btn btn-primary" onClick={onStart} disabled={st.running || (st.selected && !st.selected.installed)}>
-            {st.running ? <><span className="pulse live" /> Running…</> : <><Bolt /> Start run</>}
-          </button>
-          <button className="icon-btn" onClick={toggleTheme} title="Toggle theme"><Moon /></button>
+          {st.running ? (
+            <button className="btn btn-danger" onClick={onStop} disabled={st.stopping}>
+              {st.stopping ? <><span className="pulse live" /> Stopping…</> : <><Stop /> Stop run</>}
+            </button>
+          ) : (
+            <button className="btn btn-primary" onClick={onStart} disabled={st.selected && !st.selected.installed}>
+              <Bolt /> Start run
+            </button>
+          )}
         </header>
         <main className="view"><div className="view-inner"><Outlet /></div></main>
       </div>

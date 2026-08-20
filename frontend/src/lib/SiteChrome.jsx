@@ -42,7 +42,7 @@ function useReveal() {
   const { pathname } = useLocation();
   useEffect(() => {
     if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
-    let pending = [...document.querySelectorAll(".section, .strip, .cta-band .box, .page-head .inner")];
+    let pending = [...document.querySelectorAll(".section, .strip, .cta-band .box, .site-head .inner")];
     if (!pending.length) return;
     pending.forEach((e) => e.classList.add("rv"));
 
@@ -173,7 +173,7 @@ export function DotField({ soft = false }) {
 
 export function PageHead({ eyebrow, title, lede, children }) {
   return (
-    <header className="page-head">
+    <header className="site-head">
       <DotField soft />
       <div className="inner">
         {eyebrow && <div className="eyebrow">{eyebrow}</div>}

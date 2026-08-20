@@ -3,6 +3,11 @@ import Mascot, { Bug } from "./Mascot.jsx";
 
 /* The "Meet Nib" set piece, and the only place Nib animates on the site.
  *
+ * The scene's CSS lives in index.css, not in a <style> element here. An inline
+ * <style> renders its own source as visible text the moment anything stops
+ * treating it as a stylesheet, which is exactly what it did on the landing
+ * page. The measurements below are handed over as custom properties instead.
+ *
  * It plays one short story rather than looping decoration: Nib holds his mark,
  * shifting his weight about on it, defects fly in at him, he swats every one
  * out of the air, and he is pleased with himself for a moment before it starts
@@ -74,52 +79,9 @@ export default function NibScene() {
   const state = phase === "swat" && !still ? "chaos" : "success";
 
   return (
-    <div className={`nibscene ${live || still ? "live" : ""}`} ref={host} aria-hidden="true">
-      <style>{`
-        .nibscene { position: relative; height: 268px; display: grid; place-items: center;
-          overflow: hidden; }
-        .nibscene .stage { position: relative; width: 100%; max-width: 560px; height: 100%; }
-        .nibscene .nib-mark {
-          position: absolute; left: 50%; bottom: ${FLOOR}px;
-          margin-left: ${-MARK_W / 2}px; width: ${MARK_W}px;
-        }
-        /* He holds his mark and shifts about on it. Long and uneven on purpose —
-           a short even cycle reads as a machine idling, not as someone waiting. */
-        .nibscene.live .nib-mark { animation: nib-shift 9.5s ease-in-out infinite; }
-        @keyframes nib-shift {
-          0%,100% { transform: translate(0, 0) }
-          17%     { transform: translate(-13px, -3px) }
-          38%     { transform: translate(7px, 2px) }
-          59%     { transform: translate(-5px, -6px) }
-          78%     { transform: translate(11px, -1px) }
-        }
-
-        /* Each defect flies from off-stage to the paw and pops on arrival. The
-           flight time IS the timer — no second schedule to drift out of sync. */
-        .nibscene .swarmer {
-          position: absolute; left: 50%; bottom: ${PAW_Y - BUG_PX / 2}px;
-          margin-left: ${PAW_X - BUG_PX / 2}px;
-          width: ${BUG_PX}px; height: ${BUG_PX}px; opacity: 0;
-          transition: opacity .18s, scale .18s;
-        }
-        .nibscene.live .swarmer { animation: bug-in var(--dur) cubic-bezier(.5,.1,.6,.9) var(--delay) both; }
-        .nibscene .swarmer.gone { opacity: 0 !important; scale: 2.1; }
-        @keyframes bug-in {
-          0%   { opacity: 0; transform: translate(var(--fx), var(--fy)) }
-          12%  { opacity: 1 }
-          55%  { transform: translate(calc(var(--fx) * .34), calc(var(--fy) * .5 - 26px)) }
-          100% { opacity: 1; transform: translate(0, 0) }
-        }
-
-        .nibscene .ground {
-          position: absolute; left: 18%; right: 18%; bottom: 38px; height: 1px;
-          background: var(--hair-soft);
-        }
-        @media (prefers-reduced-motion: reduce) {
-          .nibscene .swarmer { display: none; }
-          .nibscene.live .nib-mark { animation: none; }
-        }
-      `}</style>
+    <div className={`nibscene ${live || still ? "live" : ""}`} ref={host} aria-hidden="true"
+         style={{ "--floor": `${FLOOR}px`, "--mark-w": `${MARK_W}px`,
+                  "--paw-x": `${PAW_X}px`, "--paw-y": `${PAW_Y}px`, "--bug": `${BUG_PX}px` }}>
 
       <div className="stage">
         <div className="ground" />

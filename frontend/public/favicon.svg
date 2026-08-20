@@ -1,22 +1,27 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <!-- Gremlin mark. The first attempt packed the dots edge to edge and read as
-       one dense blob; this one uses smaller circles, real gaps between them and
-       a generous margin, so the negative space does the describing. Two ears
-       above a ring of dots, amber eyes on the face plate. -->
-  <rect width="512" height="512" fill="#F5F1E8"/>
-  <g fill="#2A554D">
-    <rect x="150" y="118" width="60" height="60" rx="15"/>
-    <rect x="302" y="118" width="60" height="60" rx="15"/>
+  <!-- Nib, drawn as a mark rather than cropped from the illustration.
+
+       The previous favicon carried six values at once — teal head, darker teal
+       ears, mauve inner ear, cream eye white, amber iris, dark pupil — plus a
+       side shadow and a highlight, on a head pushed hard against the frame.
+       Below about 48px all of that turns to mud, which is why it read as
+       clip-art rather than as a logo.
+
+       This is the same silhouette (head and ear paths lifted from Mascot.jsx,
+       so it is demonstrably the same creature) reduced to two hues and no
+       modelling: amber ground, one flat teal, and the eyes cut straight back
+       to the ground colour. Eyes are at Nib's true r18 proportion, not the r24
+       they were inflated to; the ears carry the recognition instead, which is
+       what they are shaped for. Content is inset 8% so the mark has margins. -->
+  <rect width="512" height="512" fill="#E8A63C"/>
+  <g transform="translate(4.0 67.4) scale(2.1)">
+    <g fill="#1F4640">
+      <path d="M64 84 q-34 -30 -44 -68 q34 8 56 36 q10 14 12 30 Z"/>
+      <path d="M176 84 q34 -30 44 -68 q-34 8 -56 36 q-10 14 -12 30 Z"/>
+      <path d="M56 96 q0 -58 64 -58 q64 0 64 58 q0 42 -22 56 q-17 11 -42 11
+               q-25 0 -42 -11 q-22 -14 -22 -56 Z"/>
+    </g>
+    <ellipse cx="94" cy="104" rx="18" ry="18.5" fill="#E8A63C"/>
+    <ellipse cx="146" cy="104" rx="18" ry="18.5" fill="#E8A63C"/>
   </g>
-  <g fill="#35695F">
-    <circle cx="196" cy="238" r="33"/>
-    <circle cx="316" cy="238" r="33"/>
-    <circle cx="150" cy="312" r="33"/>
-    <circle cx="362" cy="312" r="33"/>
-    <circle cx="200" cy="384" r="33"/>
-    <circle cx="312" cy="384" r="33"/>
-  </g>
-  <rect x="219" y="278" width="74" height="74" rx="20" fill="#2A554D"/>
-  <circle cx="238" cy="308" r="15" fill="#F2B44A"/>
-  <circle cx="274" cy="308" r="15" fill="#F2B44A"/>
 </svg>

@@ -1,11 +1,15 @@
+import { useState } from "react";
 import Mascot from "../lib/Mascot.jsx";
-import { pad3, screenUrl } from "../lib/ui.jsx";
+import { pad3, screenUrl, Lightbox } from "../lib/ui.jsx";
 import { useStore } from "../lib/useStore.js";
 
 export default function Trace() {
   const st = useStore();
   const trace = st.trace?.trace || [];
   const stepShots = (st.screens || []).filter((n) => n.startsWith("step_")).sort();
+  // The trace is the one pane that scrolls: it is the run's log, and paging a
+  // log breaks the thing it is for — following a path from start to end.
+  const [zoom, setZoom] = useState(null);
 
   return (
     <>
@@ -14,18 +18,25 @@ export default function Trace() {
         <p className="page-desc">Every action from app launch, in order — the exact path the replayer re-executes. {trace.length} actions across {st.trace?.distinct_screens ?? 0} distinct screens.</p>
       </div>
 
+      <div className="page-body scrolls">
       {trace.length === 0 ? (
         <div className="empty-state">
-          <div className="icon"><Mascot size={80} state="idle" /></div>
+          <div className="icon"><Mascot size={132} state="box" /></div>
           <h3>No trace yet</h3><p>Start a run to record the agent's path.</p>
         </div>
       ) : (
         <div className="timeline">
-          {trace.map((a, i) => (
+          {trace.map((a, i) => {
+            const shot = stepShots[i];
+            return (
             <div className="tl-item" key={i}>
               <div className={"node" + (a.target_label ? " new" : "")} />
               <div className="tl-row">
-                <div className="tl-thumb">{stepShots[i] && <img loading="lazy" src={screenUrl(stepShots[i])} alt="" />}</div>
+                <div className={"tl-thumb" + (shot ? " zoomable" : "")}
+                     onClick={shot ? () => setZoom({ src: screenUrl(shot), cap: `step ${pad3(i + 1)} · ${a.verb}` }) : undefined}
+                     title={shot ? "Click to see the full frame" : undefined}>
+                  {shot && <img loading="lazy" src={screenUrl(shot)} alt="" />}
+                </div>
                 <div className="tl-main">
                   <div className="tl-head">
                     <span className="tl-step">STEP {pad3(i + 1)}</span>
@@ -38,9 +49,12 @@ export default function Trace() {
                 </div>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       )}
+      </div>
+      <Lightbox src={zoom?.src} caption={zoom?.cap} onClose={() => setZoom(null)} />
     </>
   );
 }

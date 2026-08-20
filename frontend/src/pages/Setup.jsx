@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Bolt, Check } from "../lib/icons.jsx";
 
 /* A step-by-step "connect your phone and run" guide. Static content, but it's
@@ -99,6 +100,12 @@ R58N70XXXXX     device`}</Code>
 ];
 
 export default function Setup() {
+  // Seven steps of prose do not fit a viewport, and the console does not
+  // scroll — so the guide is a rail plus one step at a time. Which is also how
+  // people follow instructions: one thing, then the next.
+  const [i, setI] = useState(0);
+  const step = STEPS[i];
+
   return (
     <>
       <div className="page-head">
@@ -106,28 +113,36 @@ export default function Setup() {
         <p className="page-desc">Connect your Android phone and run your first scan. Takes about five minutes the first time.</p>
       </div>
 
-      <div className="setup-callout">
-        <div className="eyebrow"><Bolt /> Before you start</div>
-        <p className="note" style={{ fontSize: 14 }}>Gremlin drives a <b>real device</b> over USB — it doesn't build or install your app, so whatever you test must already be installed on the phone. Use a <b>throwaway account</b> with no real data: the agent taps, types and scrolls freely, so treat the run like a stranger poking at your app.</p>
-      </div>
+      <div className="page-body">
+        <div className="setup-callout">
+          <div className="eyebrow"><Bolt /> Before you start</div>
+          <p className="note">Gremlin drives a <b>real device</b> over USB — it doesn't build or install your app, so whatever you test must already be installed on the phone. Use a <b>throwaway account</b> with no real data: the agent taps, types and scrolls freely, so treat the run like a stranger poking at your app.</p>
+        </div>
 
-      <ol className="setup-steps">
-        {STEPS.map((s, i) => (
-          <li className="setup-step" key={i}>
-            <div className="setup-num">{i + 1}</div>
-            <div className="setup-content">
-              <h3>{s.t}</h3>
-              {s.body}
+        <div className="setup-split">
+          <ol className="setup-rail">
+            {STEPS.map((t, n) => (
+              <li key={n}>
+                <button className={"setup-railbtn" + (n === i ? " active" : "") + (n < i ? " done" : "")}
+                        onClick={() => setI(n)}>
+                  <span className="setup-num">{n < i ? <Check /> : n + 1}</span>
+                  <span className="setup-railtitle">{t.t}</span>
+                </button>
+              </li>
+            ))}
+          </ol>
+
+          <div className="setup-panel">
+            <h3>{step.t}</h3>
+            <div className="setup-content">{step.body}</div>
+            <div className="setup-nav">
+              <button className="btn" onClick={() => setI(i - 1)} disabled={i === 0}>← Back</button>
+              <span className="setup-count">Step {i + 1} of {STEPS.length}</span>
+              {i < STEPS.length - 1
+                ? <button className="btn btn-primary" onClick={() => setI(i + 1)}>Next →</button>
+                : <span className="setup-fin"><Check /> That's it — start a run from the top bar.</span>}
             </div>
-          </li>
-        ))}
-      </ol>
-
-      <div className="setup-done">
-        <div className="setup-num done"><Check /></div>
-        <div>
-          <h3 style={{ margin: 0 }}>That's it</h3>
-          <p className="note" style={{ margin: "4px 0 0" }}>Watch the run on the <b>Live run</b> page; when it finishes you'll get a desktop notification and a summary. Trouble connecting? Almost always the USB mode (set it to File transfer) or the debugging authorization dialog.</p>
+          </div>
         </div>
       </div>
     </>

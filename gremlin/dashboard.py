@@ -3,8 +3,9 @@
 Not a single dashboard but a small site: an Overview landing page, a Live run
 view that streams the agent's observe→decide→act→check loop over a WebSocket, a
 Trace timeline, a Bugs gallery, and a Gremlin-vs-monkey Benchmark. The chrome is
-a static SPA (``web/``) served here; live data arrives over ``/ws`` and the
+a static SPA served here; live data arrives over ``/ws`` and the
 finished artifacts (``trace.json``, ``eval.json``, screenshots) over ``/api``.
+The console is the React app in ``frontend/``; build it before first use.
 
     python -m gremlin.dashboard [--steps N]
 
@@ -32,8 +33,7 @@ from .explorer import Explorer
 from .targets import all_targets
 from . import emulator, platforms
 
-_WEB = Path(__file__).parent / "web"
-# The React console, once built with `cd frontend && npm run build`.
+# The React console, built with `cd frontend && npm run build`.
 _DIST = Path(__file__).parent.parent / "frontend" / "dist"
 
 _clients: set[WebSocket] = set()
@@ -44,6 +44,9 @@ _target_name: str | None = None  # friendly name of the selected app, for the UI
 # An emulator this dashboard booted, so it can be shut down again. None when we
 # are driving a device that was already attached — which we must never kill.
 _emulator: "emulator.Emulator | None" = None
+# The Explorer of the run in flight, so /api/stop can ask it to wind down. None
+# whenever nothing is running.
+_explorer: "Explorer | None" = None
 
 
 @asynccontextmanager
@@ -55,7 +58,6 @@ async def _lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=_lifespan)
-app.mount("/static", StaticFiles(directory=_WEB), name="static")
 if (_DIST / "assets").exists():
     app.mount("/assets", StaticFiles(directory=_DIST / "assets"), name="assets")
 
@@ -94,9 +96,10 @@ def _start_run() -> None:
     _run_started = True
 
     def worker() -> None:
+        global _explorer
         try:
-            explorer = Explorer(_cfg, on_event=_on_event)
-            bugs = explorer.run()
+            _explorer = Explorer(_cfg, on_event=_on_event)
+            bugs = _explorer.run()
             from .reporter import write_reports
 
             if bugs:
@@ -104,31 +107,28 @@ def _start_run() -> None:
         finally:
             global _run_started
             _run_started = False
+            _explorer = None
 
     threading.Thread(target=worker, daemon=True).start()
 
 
 # ---- pages -----------------------------------------------------------------
-# Legacy one-file UI, used only if the React app hasn't been built yet.
-_SHELL = """<!doctype html><html lang=en><head><meta charset=utf-8>
-<meta name=viewport content="width=device-width,initial-scale=1">
-<title>Gremlin — agent console</title>
-<link rel=preconnect href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel=stylesheet>
-<link rel=stylesheet href="/static/styles.css">
-<link rel=icon href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%91%BE%3C/text%3E%3C/svg%3E">
-</head><body>
-__BODY__
-<script src="/static/app.js"></script>
-</body></html>"""
+_BUILD_HINT = """<!doctype html><meta charset=utf-8>
+<title>Gremlin — console not built</title>
+<body style="font:16px/1.6 system-ui;max-width:40rem;margin:4rem auto;padding:0 1rem">
+<h1>The console has not been built yet.</h1>
+<p>Build it once, then reload this page:</p>
+<pre style="background:#f4f4f5;padding:1rem;border-radius:6px">cd frontend &amp;&amp; npm install &amp;&amp; npm run build</pre>
+<p>Runs themselves need none of this — <code>python run.py</code> works without the console.</p>
+</body>"""
 
 
 def _serve_app() -> HTMLResponse:
-    """Serve the built React SPA if present, else the legacy one-file UI."""
-    if (_DIST / "index.html").exists():
-        return HTMLResponse((_DIST / "index.html").read_text())
-    body = (_WEB / "index.html").read_text()
-    return HTMLResponse(_SHELL.replace("__BODY__", body))
+    """Serve the built React SPA, or tell the developer how to build it."""
+    index = _DIST / "index.html"
+    if not index.exists():
+        return HTMLResponse(_BUILD_HINT, status_code=503)
+    return HTMLResponse(index.read_text())
 
 
 @app.get("/")
@@ -167,6 +167,21 @@ async def start(request: Request) -> dict:
     _start_run()
     return {"started": True, "package": _cfg.package, "activity": _cfg.activity,
             "platform": _cfg.platform}
+
+
+@app.post("/api/stop")
+async def api_stop() -> JSONResponse:
+    """Ask the run in flight to end after the current step.
+
+    Deliberately not a kill: the explorer finishes the action it is mid-way
+    through, then stops the oracle, writes the trace and emits `done` like any
+    other ending. That is also what releases the device — a killed thread would
+    leave the phone's screen pinned awake.
+    """
+    if not _run_started or _explorer is None:
+        return JSONResponse({"stopping": False, "error": "no run in progress"}, status_code=409)
+    _explorer.stop()
+    return JSONResponse({"stopping": True})
 
 
 @app.get("/api/targets")
@@ -314,11 +329,19 @@ async def ws(ws: WebSocket) -> None:
 
 
 # SPA fallback: client-side routes (/app, /signin, …) resolve to the app shell on
-# a hard refresh. Registered last so /api, /ws, /assets, /static win first.
+# a hard refresh. Registered last so /api, /ws and /assets win first.
 @app.get("/{full_path:path}")
 async def spa(full_path: str):
-    if full_path.startswith(("api/", "ws", "assets/", "static/")):
+    if full_path.startswith(("api/", "ws", "assets/")):
         return JSONResponse({"error": "not found"}, status_code=404)
+    # Files vite copies from frontend/public land at the dist root, not under
+    # /assets — favicon.svg is the one that matters. Without this they fall
+    # through to the shell below and the browser gets HTML where it asked for
+    # an image, so the tab icon silently never appears.
+    candidate = (_DIST / full_path).resolve()
+    if (full_path and candidate.is_file()
+            and candidate.is_relative_to(_DIST.resolve())):  # no ../ escapes
+        return FileResponse(candidate)
     return _serve_app()
 
 

@@ -1,4 +1,3 @@
-import { useEffect, useRef } from "react";
 import Mascot from "../lib/Mascot.jsx";
 import { mascotState, mascotLine } from "../lib/mascotState.js";
 import { useNavigate } from "react-router-dom";
@@ -10,19 +9,18 @@ import { formatDuration } from "../lib/notify.js";
 export default function Live() {
   const st = useStore();
   const cur = st.live.current;
-  const logRef = useRef(null);
-  useEffect(() => { if (logRef.current) logRef.current.scrollTop = logRef.current.scrollHeight; }, [st.live.steps.length]);
 
   return (
     <>
-      <div className="page-head" style={{ display: "flex", alignItems: "center", gap: 18 }}>
-        <Mascot size={72} state={mascotState(st)} />
+      <div className="page-head tight" style={{ display: "flex", alignItems: "center", gap: 14 }}>
+        <Mascot size={78} state={mascotState(st)} />
         <div style={{ flex: 1 }}>
           <h1 className="page-title">Live run</h1>
           <p className="page-desc">{mascotLine(mascotState(st), st.live.bugs.length)}</p>
         </div>
       </div>
 
+      <div className="page-body">
       {st.done && st.summary && <Summary s={st.summary} />}
 
       <div className="live" style={{ marginTop: st.done && st.summary ? 22 : 0 }}>
@@ -51,9 +49,9 @@ export default function Live() {
 
           <div className="log">
             <div className="log-head"><span className={"pulse " + (st.running ? "live" : "idle")} /> action stream</div>
-            <div className="log-body" ref={logRef}>
+            <div className="log-body">
               {st.live.steps.length === 0 && <div className="log-line"><span className="txt" style={{ color: "var(--faint)" }}>no actions yet</span></div>}
-              {st.live.steps.map((s, i) => (
+              {[...st.live.steps].reverse().map((s, i) => (
                 <div className="log-line" key={i}>
                   <span className="step">{pad3(s.step)}</span>
                   <span className={"verb " + s.verb}>{s.verb}</span>
@@ -65,7 +63,7 @@ export default function Live() {
 
           {st.live.bugs.length > 0 && (
             <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
-              {[...st.live.bugs].reverse().map((b, i) => (
+              {[...st.live.bugs].reverse().slice(0, 2).map((b, i) => (
                 <div className={"bug-card " + sevClass(b.severity)} key={i}>
                   <div className="sev"><Bug /> {b.severity}</div>
                   <div className="t">{b.title}</div><div className="s">found at step {b.step}</div>
@@ -74,6 +72,7 @@ export default function Live() {
             </div>
           )}
         </div>
+      </div>
       </div>
     </>
   );

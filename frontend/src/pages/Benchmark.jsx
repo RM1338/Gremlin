@@ -34,15 +34,19 @@ export default function Benchmark() {
   const g = arms?.vision, c = arms?.coverage, m = arms?.monkey;
 
   return (
-    <div ref={rootRef}>
-      <div className="page-head">
+    <div ref={rootRef} className="page-root">
+      <div className="page-head" style={{ display: "flex", alignItems: "center", gap: 18 }}>
+        <Mascot size={112} state="measure" />
+        <div style={{ flex: 1 }}>
         <h1 className="page-title">Benchmark</h1>
         <p className="page-desc">
           Equal action budget, same cold start. Coverage is distinct screens reached,
           deduplicated by perceptual hash.
         </p>
+        </div>
       </div>
 
+      <div className="page-body">
       {isDemo && (
         <div className="pill" style={{ marginBottom: 18, color: "var(--layout)", borderColor: "var(--layout)" }}>
           Demo data — not a measured result
@@ -51,7 +55,7 @@ export default function Benchmark() {
 
       {!g ? (
         <div className="empty-state">
-          <div className="icon"><Mascot size={80} state="idle" /></div>
+          <div className="icon"><Mascot size={132} state="measure" /></div>
           <h3>No benchmark yet</h3>
           <p>
             Run <code>python -m gremlin.eval --project &lt;app&gt; --coverage-only --monkey</code> to
@@ -71,6 +75,10 @@ export default function Benchmark() {
                           color={SERIES[k].color} />
                 ))}
               </div>
+              <p className="note" style={{ margin: "14px 0 0", fontSize: 12 }}>
+                One run is one sample. A result worth citing needs five seeds and a reported spread —
+                the multi-seed runner is not built, so read this as a smoke test, not a finding.
+              </p>
               <div className="legend">
                 {present.map((k) => (
                   <div className="li" key={k}>
@@ -81,7 +89,7 @@ export default function Benchmark() {
               </div>
             </div>
 
-            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+            <div className="col">
               {m && (
                 <div className="callout">
                   <div className="big">
@@ -121,13 +129,9 @@ export default function Benchmark() {
             </div>
           </div>
 
-          <p className="note" style={{ marginTop: 18 }}>
-            One run is one sample. A result worth citing needs at least five seeds and a reported
-            spread — the multi-seed runner is not built yet, so read this as a smoke test, not a
-            finding.
-          </p>
         </>
       )}
+      </div>
     </div>
   );
 }

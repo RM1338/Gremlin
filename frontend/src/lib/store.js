@@ -24,6 +24,7 @@ let state = {
   serial: null,       // chosen adb serial; null = "whatever adb sees"
   emulatorProblem: null, // why we can't offer an emulator, if we can't
   booting: false,     // an AVD is starting up
+  stopping: false,    // a stop was requested; the run ends after the current step
 };
 
 const listeners = new Set();
@@ -157,7 +158,7 @@ export async function startRun(target) {
   if ("Notification" in window && Notification.permission === "default") {
     try { await Notification.requestPermission(); } catch {}
   }
-  set({ running: true, done: false, summary: null, selected: t || state.selected, live: { steps: [], bugs: [], current: null, screenCount: 0 } });
+  set({ running: true, done: false, stopping: false, summary: null, selected: t || state.selected, live: { steps: [], bugs: [], current: null, screenCount: 0 } });
   try {
     await fetch("/start", {
       method: "POST",
@@ -165,6 +166,22 @@ export async function startRun(target) {
       body: JSON.stringify(t || {}),
     });
   } catch { set({ running: false }); throw new Error("Could not reach the runner. Is `python -m gremlin.dashboard` running?"); }
+}
+
+/* Ask the runner to wind the current run down. The run does NOT end here: the
+   explorer finishes the step it is in, then emits `done` over the websocket,
+   which is what actually clears `running`. Clearing it optimistically would
+   show "Start run" while the phone was still being driven. */
+export async function stopRun() {
+  if (!state.running || state.stopping) return;
+  set({ stopping: true });
+  try {
+    const r = await fetch("/api/stop", { method: "POST" });
+    if (!r.ok) throw new Error((await r.json()).error || "could not stop the run");
+  } catch (e) {
+    set({ stopping: false });
+    throw e;
+  }
 }
 
 let ws = null;
@@ -190,7 +207,7 @@ function onBug(m) {
   set({ live: { ...state.live, bugs: [...state.live.bugs, m] } });
 }
 async function onDone(m) {
-  set({ running: false, done: true, summary: m });
+  set({ running: false, done: true, stopping: false, summary: m });
   notifyRunComplete(m);
   await loadState();
 }

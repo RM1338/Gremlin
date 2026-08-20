@@ -1,13 +1,15 @@
 import Mascot from "../lib/Mascot.jsx";
 
 const STATES = [
-  ["idle", "Idle — empty states, hero"],
+  ["idle", "Idle — hero, asleep"],
+  ["box", "Boxed — nothing recorded yet"],
   ["chaos", "Chaos run — exploring"],
   ["explorer", "Explorer — the policy"],
   ["crash", "Crash caught"],
   ["trace", "Trace reveal — detective"],
   ["error", "Error softener"],
   ["success", "Success cheer"],
+  ["measure", "Measure — the benchmark"],
 ];
 
 export default function MascotSheet() {
@@ -15,7 +17,7 @@ export default function MascotSheet() {
     <div style={{ background: "#F5F1E8", minHeight: "100vh", padding: 44, color: "#14211E" }}>
       <h1 style={{ font: "800 30px Inter", margin: "0 0 4px" }}>Nib — mascot sheet</h1>
       <p style={{ color: "#6A7A74", margin: "0 0 34px" }}>
-        Chaos ↔ detective. Six states mapped to product moments.
+        Chaos ↔ detective. Nine states mapped to product moments.
       </p>
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 18 }}>

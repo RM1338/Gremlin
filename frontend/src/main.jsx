@@ -25,10 +25,6 @@ function Protected({ children }) {
   return isAuthed() ? children : <Navigate to="/signin" replace />;
 }
 
-// Apply saved theme before first paint.
-const savedTheme = localStorage.getItem("gremlin-theme");
-if (savedTheme) document.documentElement.dataset.theme = savedTheme;
-
 const router = createBrowserRouter([
   { path: "/", element: <Landing /> },
   { path: "/use-cases", element: <UseCases /> },

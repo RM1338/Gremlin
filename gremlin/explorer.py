@@ -59,6 +59,18 @@ class Explorer:
         self._done = False                      # stop the run loop early
         self._complete = False                  # stopped because coverage is done
 
+    def stop(self, note: str = "Stopped by the user.") -> None:
+        """Ask the run to end after the current step.
+
+        Called from another thread (the dashboard's request handler). It sets
+        the same flag the coverage-complete path uses rather than killing the
+        worker, so `run()` still drains the oracle, writes the trace and emits
+        `done` — a killed thread would leave the device with the screen pinned
+        awake and the partial run unreported.
+        """
+        self._run_note = note
+        self._done = True
+
     def _emit(self, event: str, payload: dict) -> None:
         if self._on_event:
             try:
@@ -87,7 +99,13 @@ class Explorer:
                     print(f"  !! model unavailable at step {step}: {e}")
                     break
                 if self._done:
-                    print(f"  ✓ coverage complete at step {step}: every reachable control tapped")
+                    # _done is set by two different things now: coverage running
+                    # out of frontier, and the user pressing stop. Only the first
+                    # is "complete".
+                    if self._complete:
+                        print(f"  ✓ coverage complete at step {step}: every reachable control tapped")
+                    else:
+                        print(f"  ■ stopped at step {step}: {self._run_note}")
                     break
         finally:
             self.oracle.stop()

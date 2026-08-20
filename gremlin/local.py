@@ -29,11 +29,10 @@ from ._env import load_dotenv
 
 load_dotenv()
 
-# Defaults match compose.yml, where the model service is reachable under its
-# compose hostname and is served under a stable alias so that swapping the
-# underlying checkpoint never touches Gremlin's configuration.
-BASE_URL = os.environ.get("LOCAL_BASE_URL", "http://vllm:8000/v1").rstrip("/")
-MODEL = os.environ.get("LOCAL_MODEL", "gremlin-vision")
+# Ollama's default port, since that is the usual local server. Any
+# OpenAI-compatible endpoint works — vLLM and llama.cpp speak the same shape.
+BASE_URL = os.environ.get("LOCAL_BASE_URL", "http://localhost:11434/v1").rstrip("/")
+MODEL = os.environ.get("LOCAL_MODEL", "qwen3-vl:32b")
 
 
 class LocalError(RuntimeError):
@@ -132,8 +131,7 @@ def generate(prompt: str, image_path: Path | None = None, vision_width: int = 54
             # is open but refusing.
             raise LocalError(
                 f"local model unreachable at {endpoint}: {e.reason}. "
-                "Is that backend up and finished loading? Check with: "
-                "docker compose ps  /  docker compose logs -f ollama"
+                "Is the server up and finished loading the weights?"
             ) from e
 
     try:

@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Bug, Check, Copy, Doc, Wrench, Spark2, X } from "../lib/icons.jsx";
-import { sevClass, screenUrl } from "../lib/ui.jsx";
+import Mascot from "../lib/Mascot.jsx";
+import { sevClass, screenUrl, Pager, Lightbox } from "../lib/ui.jsx";
+import { usePaged } from "../lib/usePaged.js";
 import { useStore } from "../lib/useStore.js";
 
 // The three gates the Tier-2 autofix must clear, in pipeline order. Names match
@@ -14,6 +16,9 @@ const GATES = [
 export default function Bugs() {
   const st = useStore();
   const bugs = st.trace?.bugs || [];
+  // One collapsed bug card plus its gap. Expanding a tier grows the card, so
+  // the card itself caps what it shows rather than pushing the page.
+  const pg = usePaged(bugs, 168);
 
   return (
     <>
@@ -22,23 +27,27 @@ export default function Bugs() {
         <p className="page-desc">Crashes, layout overflows and jank the oracle caught by draining logcat scoped to the app pid. Each bug carries a three-tier remediation ladder — the <b>report</b>, a portable <b>fix prompt</b>, and the <b>autofix</b> pipeline.</p>
       </div>
 
+      <div className="page-body">
       {bugs.length === 0 ? (
         <div className="empty-state">
-          <div className="icon"><div style={{ width: 72, height: 72, borderRadius: "50%", display: "grid", placeItems: "center", background: "color-mix(in srgb, var(--brand) 12%, transparent)", color: "var(--brand)" }}><Check style={{ width: 34, height: 34 }} /></div></div>
+          <div className="icon"><Mascot size={132} state="success" /></div>
           <h3>No bugs — clean run</h3>
           <p>Gremlin explored the app end-to-end without tripping the oracle. Plant a defect to see detection light up.</p>
         </div>
       ) : (
-        <div className="bug-list">
-          {bugs.map((b, i) => <BugCard key={i} bug={b} backend={st.fixBackend} />)}
+        <div className="bug-list" ref={pg.ref}>
+          {pg.slice.map((b, i) => <BugCard key={pg.from + i} bug={b} backend={st.fixBackend} />)}
         </div>
       )}
+      <Pager {...pg} total={bugs.length} unit="bugs" onPage={pg.setPage} />
+      </div>
     </>
   );
 }
 
 function BugCard({ bug: b, backend }) {
   const [tier, setTier] = useState(0);
+  const [zoom, setZoom] = useState(null);
   const shot = b.screenshot ? b.screenshot.split("/").pop() : null;
   const sev = sevClass(b.severity);
 
@@ -51,7 +60,12 @@ function BugCard({ bug: b, backend }) {
         </div>
         <div className="bug-title">{b.title || b.kind}</div>
         {b.dart_file && <div className="bug-loc">at <b>{b.dart_file}:{b.dart_line}</b></div>}
-        {shot && <div className="bug-shot"><img loading="lazy" src={screenUrl(shot)} alt="screen at failure" /></div>}
+        {shot && (
+          <div className="bug-shot zoomable" title="Click to see the full frame"
+               onClick={() => setZoom(screenUrl(shot))}>
+            <img loading="lazy" src={screenUrl(shot)} alt="screen at failure" />
+          </div>
+        )}
       </div>
 
       <div className="tier-col">
@@ -67,6 +81,7 @@ function BugCard({ bug: b, backend }) {
           {tier === 2 && <Tier2 bug={b} backend={backend} />}
         </div>
       </div>
+      <Lightbox src={zoom} caption={b.title || b.kind} onClose={() => setZoom(null)} />
     </div>
   );
 }

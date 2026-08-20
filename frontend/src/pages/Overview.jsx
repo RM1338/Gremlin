@@ -27,6 +27,7 @@ export default function Overview() {
 
   return (
     <>
+      <div className="page-body">
       <section className="hero">
         <div className="hero-grid" />
         <div className="hero-content">
@@ -37,9 +38,8 @@ export default function Overview() {
             <button className="btn btn-primary" onClick={start} disabled={st.running}><Bolt /> {st.running ? "Running…" : "Start a run"}</button>
             <button className="btn btn-ghost" onClick={() => nav("/app/benchmark")}>See the benchmark →</button>
           </div>
-          <Terminal />
         </div>
-        <div className="hero-mascot"><Mascot size={190} state={mascotState(st)} float /></div>
+        <div className="hero-mascot"><Mascot size={132} state={mascotState(st)} /></div>
       </section>
 
       <div className="stat-grid">
@@ -58,7 +58,7 @@ export default function Overview() {
             <Node n="03" t="Act" d="tap · type · scroll · back" /><span className="pl-arrow">→</span>
             <Node n="04" t="Check" d="oracle drains logcat" />
           </div>
-          <p className="note" style={{ marginTop: 18 }}>Every action is recorded to a <code>trace.json</code> the replayer re-executes verbatim, so a bug found at step 19 is reproducible from launch.</p>
+          <p className="note" style={{ marginTop: 12, fontSize: 12.5 }}>Every action is recorded to a <code>trace.json</code> the replayer re-executes verbatim, so a bug found at step 19 is reproducible from launch.</p>
         </div>
         <div className="card">
           <div className="section-head"><h3>Latest run</h3><a onClick={() => nav("/app/live")}>Watch live →</a></div>
@@ -73,6 +73,7 @@ export default function Overview() {
             </>
           ) : <p className="note">No run yet. Press <b>Start a run</b> to watch Gremlin explore.</p>}
         </div>
+      </div>
       </div>
     </>
   );
@@ -90,32 +91,3 @@ function StatTile({ icon, k, v, foot, suffix }) {
 }
 function Node({ n, t, d }) { return <div className="pl-node"><div className="n">{n}</div><div className="t">{t}</div><div className="d">{d}</div></div>; }
 
-function Terminal() {
-  const [txt, setTxt] = useState("");
-  useEffect(() => {
-    let li = 0, ci = 0, del = false, timer;
-    const run = () => {
-      const line = TYPES[li];
-      setTxt(line.slice(0, ci));
-      if (!del && ci < line.length) { ci++; timer = setTimeout(run, 32); }
-      else if (!del) { del = true; timer = setTimeout(run, 1600); }
-      else if (ci > 0) { ci--; timer = setTimeout(run, 14); }
-      else { del = false; li = (li + 1) % TYPES.length; timer = setTimeout(run, 300); }
-    };
-    run();
-    return () => clearTimeout(timer);
-  }, []);
-  return (
-    <div style={{ marginTop: 24, borderRadius: 12, border: "1px solid var(--hair)", background: "rgba(0,0,0,.35)", overflow: "hidden", font: "12.5px/1.7 var(--mono)" }}>
-      <div style={{ display: "flex", gap: 6, padding: "9px 12px", borderBottom: "1px solid var(--hair)" }}>
-        <i style={{ width: 10, height: 10, borderRadius: "50%", background: "#ff5f57" }} />
-        <i style={{ width: 10, height: 10, borderRadius: "50%", background: "#febc2e" }} />
-        <i style={{ width: 10, height: 10, borderRadius: "50%", background: "#28c840" }} />
-      </div>
-      <div style={{ padding: "12px 14px", color: "var(--ink-dim)", minHeight: 44 }}>
-        <span style={{ color: "var(--brand)" }}>gremlin ~</span> {txt}
-        <span style={{ display: "inline-block", width: 8, height: 15, background: "var(--brand)", verticalAlign: -2, marginLeft: 2, animation: "blinkeye 1s step-end infinite" }} />
-      </div>
-    </div>
-  );
-}

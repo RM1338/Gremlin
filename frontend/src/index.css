@@ -1,39 +1,30 @@
 /* ============================================================================
-   Gremlin design system. Dark-first, one cohesive language across the marketing
-   site (landing / auth) and the product (console).
+   Gremlin design system. One light palette, one cohesive language across the
+   marketing site (landing / auth) and the product (console). There is no theme
+   switch: every token below is the only value it ever has.
    ============================================================================ */
 
 :root {
-  color-scheme: dark;
-  --bg-0: #08090c; --bg-1: #0d0f14;
-  --surface-1: #12151c; --surface-2: #171b24; --surface-3: #1d222d;
-  --hair: #232935; --hair-soft: #1a1f29;
-  --ink: #eef1f6; --ink-dim: #b6bdca; --muted: #838d9d; --faint: #545d6c;
+  color-scheme: light;
+  --bg-0: #f4f5f7; --bg-1: #fbfbfc;
+  --surface-1: #ffffff; --surface-2: #f7f8fa; --surface-3: #eef0f4;
+  --hair: #e3e6ec; --hair-soft: #edeff3;
+  --ink: #0d1017; --ink-dim: #333a46; --muted: #5f6b7c; --faint: #97a1b1;
   /* The interface is monochrome. Colour is reserved for two things: Nib, who
      carries his own palette inside the SVG, and the severity of a finding —
      stripping those would delete information rather than decoration. */
-  --brand: #eef1f6; --brand-bright: #ffffff; --brand-dim: #7d8797;
-  --brand-2: #b6bdca; --brand-2-bright: #d7dce4;
-  --on-brand: #0b0d11;
-  --crash: #ff5c62; --layout: #f6ab3d; --hang: #5b9dff; --ok: #eef1f6;
-  --series-gremlin: #eef1f6; --series-monkey: #6b7482;
+  --brand: #0d1017; --brand-bright: #000000; --brand-dim: #6b7686;
+  --brand-2: #333a46; --brand-2-bright: #0d1017;
+  --on-brand: #ffffff;
+  --crash: #ff5c62; --layout: #f6ab3d; --hang: #5b9dff; --ok: #0d1017;
+  --series-gremlin: #0d1017; --series-monkey: #9aa4b2;
   --r-sm: 8px; --r-md: 12px; --r-lg: 18px; --r-xl: 26px;
-  --shadow-md: 0 10px 30px -12px rgba(0,0,0,.7);
-  --shadow-lg: 0 30px 70px -24px rgba(0,0,0,.8);
+  --shadow-md: 0 12px 30px -16px rgba(20,30,50,.28);
+  --shadow-lg: 0 30px 60px -26px rgba(20,30,50,.3);
   --mono: ui-monospace, "JetBrains Mono", "SF Mono", Menlo, monospace;
   --sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --nav-w: 248px;
   --ease: cubic-bezier(.4,0,.2,1); --ease-out: cubic-bezier(.16,1,.3,1);
-}
-:root[data-theme="light"] {
-  color-scheme: light;
-  --bg-0: #f4f5f7; --bg-1: #fbfbfc; --surface-1: #fff; --surface-2: #f7f8fa; --surface-3: #eef0f4;
-  --hair: #e3e6ec; --hair-soft: #edeff3;
-  --ink: #0d1017; --ink-dim: #333a46; --muted: #5f6b7c; --faint: #97a1b1;
-  --brand: #0d1017; --brand-bright: #000000; --brand-dim: #6b7686;
-  --brand-2: #333a46; --brand-2-bright: #0d1017;
-  --on-brand: #ffffff; --ok: #0d1017; --series-gremlin: #0d1017; --series-monkey: #9aa4b2;
-  --shadow-md: 0 12px 30px -16px rgba(20,30,50,.28); --shadow-lg: 0 30px 60px -26px rgba(20,30,50,.3);
 }
 
 * { box-sizing: border-box; }
@@ -54,15 +45,70 @@ button { font-family: inherit; }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb { background: var(--hair); border-radius: 20px; border: 2px solid transparent; background-clip: padding-box; }
 
+/* ---- "Meet Nib" scene ------------------------------------------------------
+   Was a <style> element inside NibScene.jsx, which rendered its own source as
+   body text on the landing page. The measurements it needs arrive as custom
+   properties set on .nibscene by the component. */
+.nibscene { position: relative; height: 268px; display: grid; place-items: center; overflow: hidden; }
+.nibscene .stage { position: relative; width: 100%; max-width: 560px; height: 100%; }
+.nibscene .nib-mark {
+  position: absolute; left: 50%; bottom: var(--floor);
+  margin-left: calc(var(--mark-w) / -2); width: var(--mark-w);
+}
+/* He holds his mark and shifts about on it. Long and uneven on purpose — a
+   short even cycle reads as a machine idling, not as someone waiting. */
+.nibscene.live .nib-mark { animation: nib-shift 9.5s ease-in-out infinite; }
+@keyframes nib-shift {
+  0%,100% { transform: translate(0, 0) }
+  17%     { transform: translate(-13px, -3px) }
+  38%     { transform: translate(7px, 2px) }
+  59%     { transform: translate(-5px, -6px) }
+  78%     { transform: translate(11px, -1px) }
+}
+/* Each defect flies from off-stage to the paw and pops on arrival. The flight
+   time IS the timer — no second schedule to drift out of sync. */
+.nibscene .swarmer {
+  position: absolute; left: 50%; bottom: calc(var(--paw-y) - var(--bug) / 2);
+  margin-left: calc(var(--paw-x) - var(--bug) / 2);
+  width: var(--bug); height: var(--bug); opacity: 0;
+  transition: opacity .18s, scale .18s;
+}
+.nibscene.live .swarmer { animation: bug-in var(--dur) cubic-bezier(.5,.1,.6,.9) var(--delay) both; }
+.nibscene .swarmer.gone { opacity: 0 !important; scale: 2.1; }
+@keyframes bug-in {
+  0%   { opacity: 0; transform: translate(var(--fx), var(--fy)) }
+  12%  { opacity: 1 }
+  55%  { transform: translate(calc(var(--fx) * .34), calc(var(--fy) * .5 - 26px)) }
+  100% { opacity: 1; transform: translate(0, 0) }
+}
+.nibscene .ground {
+  position: absolute; left: 18%; right: 18%; bottom: 38px; height: 1px;
+  background: var(--hair-soft);
+}
+@media (prefers-reduced-motion: reduce) {
+  .nibscene .swarmer { display: none; }
+  .nibscene.live .nib-mark { animation: none; }
+}
+
 /* ---- Buttons -------------------------------------------------------------- */
-.btn { display: inline-flex; align-items: center; gap: 8px; padding: 9px 16px; border-radius: var(--r-sm);
+.btn { display: inline-flex; align-items: center; gap: 8px; padding: 9px 18px; border-radius: 999px;
   font-weight: 600; font-size: 13px; border: 1px solid var(--hair); background: var(--surface-2); color: var(--ink); cursor: pointer; transition: .15s var(--ease); }
-.btn:hover { background: var(--surface-3); }
+/* Stopping a run is the one destructive control in the header, so it is the one
+   place the interface spends colour on itself rather than on a finding. */
+.btn-danger { background: var(--crash); border-color: var(--crash); color: #fff; }
+.btn-danger:hover:not(:disabled) { background: color-mix(in srgb, var(--crash) 84%, #000); border-color: color-mix(in srgb, var(--crash) 84%, #000); }
+/* `.btn:hover` is (0,2,0) and `.btn-primary` is only (0,1,0), so an unscoped
+   hover rule wins the background and repainted the primary button with the
+   SECONDARY surface — hovering "Start run" turned it dark, which read as the
+   button going disabled. Scope the generic hover away from the primary, and
+   give the primary its own hover instead of a brightness filter that a
+   near-white brand colour cannot show. Disabled buttons opt out of both. */
+.btn:not(.btn-primary):not(.btn-danger):not(:disabled):hover { background: var(--surface-3); }
 .btn svg { width: 15px; height: 15px; }
-.btn-lg { padding: 12px 22px; font-size: 15px; border-radius: var(--r-md); }
+.btn-lg { padding: 12px 26px; font-size: 15px; border-radius: 999px; }
 .btn-primary { background: var(--brand); color: var(--on-brand); border-color: transparent; font-weight: 600; }
-.btn-primary:hover { filter: brightness(1.06); }
-.btn-primary:disabled { opacity: .5; cursor: default; filter: none; }
+.btn-primary:not(:disabled):hover { background: var(--brand-bright); }
+.btn:disabled, .btn-primary:disabled { opacity: .5; cursor: default; filter: none; }
 .btn-ghost { background: transparent; }
 .btn-block { width: 100%; justify-content: center; }
 .btn-primary svg, .btn-block svg { width: 15px; height: 15px; }
@@ -245,11 +291,11 @@ button { font-family: inherit; }
 .crumb { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted); }
 .crumb .here { color: var(--ink); font-weight: 600; } .crumb svg { width: 14px; height: 14px; opacity: .5; }
 .topbar-spacer { flex: 1; }
-.icon-btn { width: 34px; height: 34px; display: grid; place-items: center; border-radius: var(--r-sm); border: 1px solid var(--hair); background: var(--surface-1); color: var(--ink-dim); cursor: pointer; transition: .15s; }
+.icon-btn { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; border: 1px solid var(--hair); background: var(--surface-1); color: var(--ink-dim); cursor: pointer; transition: .15s; }
 .icon-btn:hover { background: var(--surface-2); color: var(--ink); } .icon-btn svg { width: 16px; height: 16px; }
 /* Target picker */
 .target-picker { position: relative; }
-.tp-btn { display: inline-flex; align-items: center; gap: 8px; padding: 7px 12px; border-radius: var(--r-sm);
+.tp-btn { display: inline-flex; align-items: center; gap: 8px; padding: 7px 14px; border-radius: 999px;
   border: 1px solid var(--hair); background: var(--surface-1); color: var(--ink); cursor: pointer; font-weight: 600; font-size: 13px; transition: .15s; }
 .tp-btn:hover:not(:disabled) { background: var(--surface-2); }
 .tp-btn:disabled { opacity: .6; cursor: default; }
@@ -275,11 +321,33 @@ button { font-family: inherit; }
   border: 1px solid var(--hair); border-radius: 20px; padding: 2px 7px; }
 .tp-none { padding: 16px 10px; color: var(--muted); font-size: 13px; text-align: center; }
 
-.view { flex: 1; overflow-y: auto; padding: 32px; animation: viewin .4s var(--ease-out); }
+/* The console is a fixed-height app shell: the page itself never scrolls, so
+   the sidebar, the top bar and every page header stay put. Where a page has
+   more content than fits — a long bug list, a long trace — that ONE region
+   scrolls inside itself (.page-body). The alternative, scrolling the whole
+   view, moved the header and the run controls off screen mid-run. */
+.view { flex: 1; min-height: 0; overflow: hidden; padding: 24px 26px; display: flex;
+  animation: viewin .4s var(--ease-out); }
 @keyframes viewin { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
-.view-inner { max-width: 1120px; margin: 0 auto; }
+.view-inner { max-width: 1120px; width: 100%; margin: 0 auto;
+  display: flex; flex-direction: column; min-height: 0; }
+.page-root { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+/* Nothing in the console scrolls — not the page, not a pane inside it. Every
+   view is sized to fit the shell, and anything genuinely unbounded (the trace,
+   the bug list) is paged rather than scrolled. */
+.page-body { flex: 1; min-height: 0; overflow: hidden; display: flex; flex-direction: column; }
+/* The trace is the exception: it is a log of a run and reading back through it
+   beats paging, so this one pane scrolls. */
+.page-body.scrolls { overflow-y: auto; }
+/* An empty state has nothing to scroll, so it takes the freed height and
+   centres in it rather than clinging to the top of a tall blank area. */
+.page-body:has(> .empty-state:only-child) { display: grid; place-content: center; }
 
-.page-head { margin-bottom: 26px; }
+/* console page header. The marketing site's is .site-head — keep them apart. */
+.page-head { margin-bottom: 26px; flex: none; }
+/* Live trades header height for device width: the phone is sized from whatever
+   vertical room is left, so a roomy header makes the screen narrower. */
+.page-head.tight { margin-bottom: 14px; }
 .page-title { font-size: 26px; font-weight: 700; letter-spacing: -.025em; margin: 0; }
 .page-desc { color: var(--muted); margin-top: 6px; font-size: 14px; max-width: 62ch; }
 .section-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
@@ -289,31 +357,47 @@ button { font-family: inherit; }
 /* Hero (overview) */
 .hero { position: relative; overflow: hidden; border-radius: var(--r-xl); border: 1px solid var(--hair);
   background: var(--surface-1);
-  padding: 40px; display: grid; grid-template-columns: 1fr auto; gap: 30px; align-items: center; margin-bottom: 26px; }
+  padding: 20px 24px; display: grid; grid-template-columns: 1fr auto; gap: 20px; align-items: center;
+  margin-bottom: 10px; flex: none; }
 .hero-grid { position: absolute; inset: 0; opacity: .5; pointer-events: none;
   background-image: radial-gradient(circle at center, color-mix(in srgb, var(--ink) 13%, transparent) 1.3px, transparent 1.6px);
   background-size: 26px 26px; mask-image: radial-gradient(80% 80% at 30% 20%, #000, transparent 80%); }
 .hero-content { position: relative; z-index: 1; max-width: 54ch; }
-.hero h1 { font-size: 32px; line-height: 1.1; letter-spacing: -.03em; margin: 14px 0 12px; }
+.hero h1 { font-size: 25px; line-height: 1.12; letter-spacing: -.03em; margin: 8px 0 8px; }
 .hero h1 em { font-style: normal; color: var(--brand); }
-.hero p { color: var(--ink-dim); font-size: 15px; margin: 0 0 22px; }
+.hero p { color: var(--ink-dim); font-size: 14px; margin: 0 0 12px; }
 .hero-cta { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
-.hero-mascot { position: relative; z-index: 1; width: 190px; height: 190px; }
+.hero-mascot { position: relative; z-index: 1; width: 132px; height: 132px; }
 @media (max-width: 1000px){ .hero { grid-template-columns: 1fr; } .hero-mascot { display: none; } }
 
-.stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-bottom: 26px; }
+.stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 10px; flex: none; }
 @media (max-width: 1000px){ .stat-grid { grid-template-columns: repeat(2,1fr); } }
-.stat { background: var(--surface-1); border: 1px solid var(--hair); border-radius: var(--r-lg); padding: 18px; position: relative; overflow: hidden; transition: transform .2s var(--ease-out), border-color .2s; }
+.stat { background: var(--surface-1); border: 1px solid var(--hair); border-radius: var(--r-lg); padding: 11px 14px; position: relative; overflow: hidden; transition: transform .2s var(--ease-out), border-color .2s; }
 .stat:hover { transform: translateY(-3px); border-color: color-mix(in srgb, var(--brand) 34%, var(--hair)); }
 .stat .k { font: 600 11px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); display: flex; align-items: center; gap: 7px; }
 .stat .k svg { width: 14px; height: 14px; color: var(--brand); }
 .stat .v { font-size: 40px; font-weight: 700; letter-spacing: -.03em; margin-top: 10px; font-variant-numeric: tabular-nums; line-height: 1; }
 .stat .foot { margin-top: 8px; font-size: 12px; color: var(--muted); } .stat .foot b { color: var(--brand); font-weight: 600; }
 .stat .spark { position: absolute; right: -6px; bottom: -6px; width: 110px; height: 60px; opacity: .5; }
-.grid-2 { display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; }
+/* align-items:start, so a card is as tall as what is in it. Stretching them to
+   the pane left "The loop" and "Latest run" as mostly empty boxes running to
+   the bottom of the page. */
+.grid-2 { display: grid; grid-template-columns: 1.4fr 1fr; gap: 10px; flex: 1; min-height: 0;
+  align-items: start; align-content: start; }
+.grid-2 > * { min-height: 0; }
+
+/* Short screens: tighten chrome, not content. Now that the cards size to what
+   is in them they no longer silently squash to fit, so the last few px have to
+   come from padding. */
+@media (max-height: 820px) {
+  .hero { padding: 14px 22px; }
+  .stat { padding: 8px 13px; }
+  .pl-node { padding: 6px 6px; }
+  .stat-grid { margin-bottom: 8px; }
+}
 @media (max-width: 1000px){ .grid-2 { grid-template-columns: 1fr; } }
 .pipeline { display: flex; align-items: center; flex-wrap: wrap; }
-.pl-node { flex: 1; min-width: 120px; text-align: center; padding: 14px 8px; border-radius: var(--r-md); border: 1px dashed var(--hair); }
+.pl-node { flex: 1; min-width: 104px; text-align: center; padding: 8px 6px; border-radius: var(--r-md); border: 1px dashed var(--hair); }
 .pl-node .n { font: 700 10px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--brand); }
 .pl-node .t { font-weight: 600; margin-top: 6px; } .pl-node .d { font-size: 12px; color: var(--muted); margin-top: 3px; }
 .pl-arrow { color: var(--faint); padding: 0 4px; }
@@ -325,9 +409,24 @@ button { font-family: inherit; }
 .note code, .page-desc code { font-family: var(--mono); background: var(--surface-2); padding: 1px 6px; border-radius: 5px; color: var(--ink-dim); }
 
 /* Live view */
-.live { display: grid; grid-template-columns: minmax(300px, 380px) 1fr; gap: 22px; align-items: start; }
+/* The live view fills whatever height the shell gives it: the phone is sized
+   from that height (not from its column width, which is what used to push the
+   page past the fold on a laptop), and the log takes the slack. */
+/* A fixed max column, NOT `auto`. Sizing the column from the phone meant the
+   browser had to resolve `width: auto` from `height: 100%` before the row's
+   height was known; it fell back to something far narrower and `height: 100%`
+   then stretched that into a sliver. Now the column is bounded and the phone
+   picks the smaller of "all the height there is" and "the height that makes it
+   exactly as wide as the column", so it can never distort. */
+.live { display: grid; grid-template-columns: minmax(0, 380px) 1fr; gap: 18px; align-items: stretch;
+  flex: 1; min-height: 0; }
 @media (max-width: 940px){ .live { grid-template-columns: 1fr; } }
-.phone { position: relative; margin: 0 auto; width: 100%; max-width: 340px; aspect-ratio: 1080/2340; border-radius: 34px; padding: 12px;
+.live > :first-child { display: flex; justify-content: center; align-items: center;
+  min-height: 0; min-width: 0; }
+/* Sized from the height it is given, capped so it can never be wider than its
+   column — an unbounded width is what cut the screen in half. */
+.phone { position: relative; margin: 0 auto; max-height: 100%; max-width: 100%;
+  height: min(100%, 823px); width: auto; aspect-ratio: 1080/2340; border-radius: 30px; padding: 9px;
   background: #14171d; box-shadow: var(--shadow-lg), inset 0 0 0 1px rgba(255,255,255,.04); }
 .phone::before { content: ""; position: absolute; top: 14px; left: 50%; transform: translateX(-50%); width: 90px; height: 7px; border-radius: 10px; background: #000; opacity: .6; z-index: 2; }
 .phone-screen { width: 100%; height: 100%; border-radius: 24px; overflow: hidden; background: #05070a; display: grid; place-items: center; }
@@ -335,15 +434,21 @@ button { font-family: inherit; }
 .phone-empty { color: var(--faint); font: 12px var(--mono); text-align: center; padding: 20px; }
 .spinner { width: 26px; height: 26px; border-radius: 50%; border: 2.5px solid var(--hair); border-top-color: var(--brand); animation: spin .8s linear infinite; margin: 0 auto 14px; }
 @keyframes spin { to { transform: rotate(360deg); } }
-.live-right { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.live-right { display: flex; flex-direction: column; gap: 12px; min-width: 0; min-height: 0; }
 .intent-card { border-radius: var(--r-lg); border: 1px solid var(--hair);
   background: color-mix(in srgb, var(--brand) 5%, var(--surface-1)); border-left: 3px solid var(--brand); padding: 18px 20px; }
 .intent-card .k { font: 600 10px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--brand); display: flex; align-items: center; gap: 8px; }
 .intent-card .v { font-size: 16px; line-height: 1.5; margin-top: 10px; }
 .intent-card .meta { margin-top: 12px; display: flex; gap: 10px; flex-wrap: wrap; font: 12px var(--mono); color: var(--muted); }
-.log { border: 1px solid var(--hair); border-radius: var(--r-lg); background: var(--surface-1); overflow: hidden; }
+.log { border: 1px solid var(--hair); border-radius: var(--r-lg); background: var(--surface-1); overflow: hidden;
+  flex: 1; min-height: 0; display: flex; flex-direction: column; }
 .log-head { display: flex; align-items: center; gap: 9px; padding: 12px 16px; border-bottom: 1px solid var(--hair); font: 600 12px var(--mono); color: var(--muted); }
-.log-body { max-height: 300px; overflow-y: auto; padding: 6px 0; font: 12.5px/1.6 var(--mono); }
+/* The one place in the console that scrolls on purpose: the action stream is a
+   log, and reading back through it is the point. column-reverse keeps the
+   newest line pinned to the bottom without any scroll-to-bottom bookkeeping,
+   and the rows are rendered newest-first to match. */
+.log-body { flex: 1; min-height: 0; overflow-y: auto; padding: 6px 0; font: 12.5px/1.6 var(--mono);
+  display: flex; flex-direction: column-reverse; justify-content: flex-start; }
 .log-line { display: flex; gap: 10px; padding: 5px 16px; animation: logslide .3s var(--ease-out); }
 @keyframes logslide { from { opacity: 0; transform: translateX(-8px); } to { opacity: 1; transform: none; } }
 .log-line .step { color: var(--faint); flex: none; } .log-line .verb { flex: none; font-weight: 600; }
@@ -372,8 +477,35 @@ button { font-family: inherit; }
 .bug-card.crash .sev { color: var(--crash); } .bug-card.layout .sev { color: var(--layout); } .bug-card.hang .sev { color: var(--hang); }
 .bug-card .t { font: 13px var(--mono); margin-top: 6px; word-break: break-all; } .bug-card .s { font-size: 12px; color: var(--muted); margin-top: 4px; }
 .empty-state { text-align: center; padding: 60px 20px; }
-.empty-state .icon { width: 72px; height: 72px; margin: 0 auto 20px; display: grid; place-items: center; }
+/* Sized to its content, not to a fixed 72px square: Nib is taller than he is
+   wide, so a fixed box let him spill out of it. */
+.empty-state .icon { width: fit-content; margin: 0 auto 20px; display: grid; place-items: center; }
 .empty-state h3 { font-size: 20px; margin: 0 0 8px; } .empty-state p { color: var(--muted); max-width: 44ch; margin: 0 auto; }
+
+/* Paged lists: the rows take the height, the pager sits under them. */
+.bug-list { flex: 1; min-height: 0; overflow: hidden; }
+.pager { display: flex; align-items: center; gap: 14px; justify-content: center;
+  padding-top: 12px; margin-top: 12px; border-top: 1px solid var(--hair); flex: none; }
+.pager-count { font: 12px var(--mono); color: var(--muted); }
+
+/* Click a screenshot, see the whole frame. The console has no room to show a
+   device screen at size inline, so the full view is an overlay. */
+.lightbox { position: fixed; inset: 0; z-index: 200; display: grid; place-items: center;
+  background: rgba(10, 14, 20, .74); backdrop-filter: blur(6px); cursor: zoom-out;
+  animation: lbin .16s var(--ease-out); padding: 34px; }
+@keyframes lbin { from { opacity: 0 } to { opacity: 1 } }
+/* Viewport units, not percentages: a percentage max-height needs a definite
+   height on the ancestor chain, and one missing link leaves the image at its
+   natural 1080x2340 with the overlay cropping it. */
+.lightbox img { max-width: calc(100vw - 72px); max-height: calc(100vh - 72px);
+  width: auto; height: auto; object-fit: contain; border-radius: 14px;
+  box-shadow: var(--shadow-lg); background: #05070a; }
+.lightbox .lb-cap { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%);
+  font: 12px var(--mono); color: #e6eaf0; opacity: .8; }
+.lightbox .lb-x { position: absolute; top: 16px; right: 20px; width: 36px; height: 36px;
+  border-radius: 50%; border: 1px solid rgba(255,255,255,.24); background: rgba(255,255,255,.1);
+  color: #fff; display: grid; place-items: center; cursor: pointer; }
+.lightbox .lb-x svg { width: 17px; height: 17px; }
 
 /* Bug list — identity column + a Tier 0/1/2 remediation ladder */
 .bug-list { display: flex; flex-direction: column; gap: 18px; }
@@ -422,7 +554,7 @@ button { font-family: inherit; }
 
 .prompt-wrap { position: relative; }
 .prompt { margin: 0; max-height: 340px; overflow: auto; background: var(--bg-0); border: 1px solid var(--hair); border-radius: 10px; padding: 14px 16px; font: 12px/1.65 var(--mono); color: var(--ink-dim); white-space: pre-wrap; word-break: break-word; }
-.copy-btn { position: absolute; top: 10px; right: 10px; display: inline-flex; align-items: center; gap: 6px; padding: 6px 11px; border-radius: 7px; border: 1px solid var(--hair); background: var(--surface-2); color: var(--ink-dim); font: 600 12px var(--sans); cursor: pointer; transition: .15s; backdrop-filter: blur(4px); }
+.copy-btn { position: absolute; top: 10px; right: 10px; display: inline-flex; align-items: center; gap: 6px; padding: 6px 13px; border-radius: 999px; border: 1px solid var(--hair); background: var(--surface-2); color: var(--ink-dim); font: 600 12px var(--sans); cursor: pointer; transition: .15s; backdrop-filter: blur(4px); }
 .copy-btn:hover { background: var(--surface-3); color: var(--ink); } .copy-btn svg { width: 13px; height: 13px; }
 .copy-btn.ok { color: var(--brand); border-color: color-mix(in srgb, var(--brand) 40%, var(--hair)); }
 
@@ -450,31 +582,63 @@ button { font-family: inherit; }
 /* Trace timeline */
 .timeline { position: relative; padding-left: 28px; }
 .timeline::before { content: ""; position: absolute; left: 8px; top: 6px; bottom: 6px; width: 2px; background: var(--hair); opacity: .8; }
-.tl-item { position: relative; padding: 0 0 18px; }
+.tl-item { position: relative; padding: 0 0 12px; }
 .tl-item .node { position: absolute; left: -28px; top: 2px; width: 18px; height: 18px; border-radius: 50%; background: var(--bg-1); border: 2px solid var(--brand); }
 .tl-item .node.new { background: var(--brand); box-shadow: 0 0 12px var(--brand); }
-.tl-row { display: grid; grid-template-columns: 72px 1fr; gap: 16px; align-items: start; border: 1px solid var(--hair); border-radius: var(--r-md); background: var(--surface-1); padding: 12px; transition: border-color .15s, background .15s; }
+.tl-row { display: grid; grid-template-columns: 78px 1fr; gap: 15px; align-items: center; border: 1px solid var(--hair); border-radius: var(--r-md); background: var(--surface-1); padding: 12px; transition: border-color .15s, background .15s; }
 .tl-row:hover { border-color: color-mix(in srgb, var(--brand) 32%, var(--hair)); background: var(--surface-2); }
-.tl-thumb { width: 72px; aspect-ratio: 1080/2340; border-radius: 7px; overflow: hidden; background: #05070a; border: 1px solid var(--hair); }
+.tl-row { padding: 11px 13px; }
+.tl-thumb { width: 78px; aspect-ratio: 1080/1800; border-radius: 7px; overflow: hidden; background: #05070a; border: 1px solid var(--hair); }
 .tl-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.tl-thumb.zoomable, .bug-shot.zoomable { cursor: zoom-in; transition: border-color .15s, transform .15s var(--ease-out); }
+.tl-thumb.zoomable:hover, .bug-shot.zoomable:hover { border-color: var(--brand); transform: scale(1.03); }
 .tl-main { min-width: 0; }
 .tl-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .tl-step { font: 700 11px var(--mono); color: var(--faint); } .tl-screen { font-weight: 650; }
 .tl-verb { font: 600 10px var(--mono); letter-spacing: .06em; text-transform: uppercase; padding: 2px 8px; border-radius: 6px; border: 1px solid var(--hair); }
 .tl-verb.tap { color: var(--brand); border-color: color-mix(in srgb, var(--brand) 40%, var(--hair)); } .tl-verb.type { color: var(--brand-2-bright); } .tl-verb.scroll { color: var(--hang); } .tl-verb.back { color: var(--layout); }
-.tl-reason { color: var(--ink-dim); font-size: 13px; margin-top: 6px; } .tl-target { font: 12px var(--mono); color: var(--muted); margin-top: 4px; } .tl-target b { color: var(--ink-dim); }
+.tl-reason { color: var(--ink-dim); font-size: 13px; margin-top: 5px; } .tl-target { font: 12px var(--mono); color: var(--muted); margin-top: 4px; } .tl-target b { color: var(--ink-dim); }
 
 /* Benchmark */
-.bench-grid { display: grid; grid-template-columns: 1.3fr 1fr; gap: 18px; align-items: start; }
+/* Fills the pane rather than stacking past it: the two columns share the
+   height, and the density below is what buys the fit on a 720px laptop. */
+/* Three columns, not two stacked cards beside a chart: the page's height then
+   is the tallest column rather than the sum of everything in the right-hand
+   one, which is what pushed it past the fold. */
+/* Two columns, not three. The chart is the evidence and it earns the wide side;
+   everything that reads off it stacks down the narrow one, so the two columns
+   come out roughly level instead of one tall card beside a short orphan.
+   align-items:start keeps each card as tall as what is in it. */
+.bench-grid { display: grid; grid-template-columns: 1.45fr 1fr; gap: 12px;
+  flex: 1; min-height: 0; align-items: start; align-content: start; }
 @media (max-width: 900px){ .bench-grid { grid-template-columns: 1fr; } }
-.chart { padding: 24px; } .chart-title { font-size: 15px; font-weight: 650; } .chart-sub { font-size: 12px; color: var(--muted); margin-top: 2px; margin-bottom: 22px; }
-.bars { display: flex; flex-direction: column; gap: 20px; }
-.bar-row { display: grid; grid-template-columns: 92px 1fr 48px; gap: 14px; align-items: center; }
+.bench-grid > * { min-height: 0; }
+.bench-grid .col { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
+.bench-grid .card, .bench-grid .callout { padding: 12px 14px; }
+.bench-grid .callout .big { font-size: 32px; }
+.bench-grid .callout p { font-size: 12px; margin-top: 6px; }
+.bench-grid .kv { padding: 4px 0; font-size: 12.5px; }
+.bench-grid .note { font-size: 12px; }
+@media (max-width: 900px){ .bench-grid { grid-template-columns: 1fr; } }
+/* On a short screen something has to give, and nothing here scrolls. The prose
+   goes first and the numbers stay — the explanations are context, the figures
+   are the result. */
+@media (max-height: 820px) {
+  .bench-grid .callout p,
+  .bench-grid .card > .note { display: none; }
+  .bench-grid .card, .bench-grid .callout { padding: 10px 13px; }
+  .bench-grid .callout .big { font-size: 27px; }
+  .bench-grid .kv { padding: 3px 0; }
+}
+.chart { padding: 14px 16px; display: flex; flex-direction: column; }
+.chart-title { font-size: 15px; font-weight: 650; } .chart-sub { font-size: 12px; color: var(--muted); margin-top: 2px; margin-bottom: 14px; }
+.bars { display: flex; flex-direction: column; gap: 11px; }
+.bar-row { display: grid; grid-template-columns: 96px 1fr 40px; gap: 13px; align-items: center; }
 .bar-name { font: 600 13px var(--mono); display: flex; align-items: center; gap: 8px; } .bar-name .swatch { width: 10px; height: 10px; border-radius: 3px; }
-.bar-track { height: 26px; background: var(--surface-3); border-radius: 7px; overflow: hidden; }
+.bar-track { height: 22px; background: var(--surface-3); border-radius: 7px; overflow: hidden; }
 .bar-fill { height: 100%; border-radius: 7px; width: 0; transition: width 1s var(--ease-out); }
 .bar-val { font: 700 15px var(--mono); text-align: right; font-variant-numeric: tabular-nums; }
-.legend { display: flex; gap: 18px; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--hair); flex-wrap: wrap; }
+.legend { display: flex; gap: 8px 20px; margin-top: 12px; padding-top: 11px; border-top: 1px solid var(--hair); flex-wrap: wrap; }
 .legend .li { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--ink-dim); } .legend .li .sw { width: 12px; height: 12px; border-radius: 4px; }
 .callout { border: 1px solid color-mix(in srgb, var(--brand) 30%, var(--hair)); background: color-mix(in srgb, var(--brand) 7%, var(--surface-1)); border-radius: var(--r-lg); padding: 20px; }
 .callout .big { font-size: 44px; font-weight: 800; letter-spacing: -.03em; color: var(--brand); line-height: 1; } .callout .lbl { font-weight: 600; margin-top: 8px; } .callout p { color: var(--ink-dim); font-size: 13px; margin: 10px 0 0; }
@@ -482,11 +646,31 @@ button { font-family: inherit; }
 
 /* Setup guide */
 .setup-callout { border: 1px solid color-mix(in srgb, var(--brand) 26%, var(--hair));
-  background: color-mix(in srgb, var(--brand) 7%, var(--surface-1)); border-radius: var(--r-lg); padding: 18px 20px; margin-bottom: 26px; }
+  background: color-mix(in srgb, var(--brand) 7%, var(--surface-1)); border-radius: var(--r-lg); padding: 12px 16px; margin-bottom: 14px; flex: none; }
+.setup-callout .note { font-size: 13px; margin: 0; }
 .setup-callout .eyebrow { margin-bottom: 8px; }
-.setup-steps { list-style: none; margin: 0; padding: 0; position: relative; }
-.setup-steps::before { content: ""; position: absolute; left: 15px; top: 12px; bottom: 40px; width: 2px; background: var(--hair); }
-.setup-step { display: grid; grid-template-columns: 32px 1fr; gap: 18px; padding-bottom: 26px; position: relative; }
+/* Rail of steps beside one open step. Seven steps of prose is more than a
+   viewport holds and nothing here scrolls, so the guide advances instead. */
+.setup-split { display: grid; grid-template-columns: 258px 1fr; gap: 16px; flex: 1; min-height: 0; }
+@media (max-width: 900px){ .setup-split { grid-template-columns: 1fr; } }
+.setup-rail { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; min-height: 0; }
+.setup-railbtn { display: flex; align-items: center; gap: 11px; width: 100%; text-align: left;
+  padding: 7px 10px; border-radius: var(--r-md); border: 1px solid transparent; background: none;
+  color: var(--muted); font-size: 13px; cursor: pointer; transition: .15s var(--ease); }
+.setup-railbtn:hover { background: var(--surface-2); color: var(--ink); }
+.setup-railbtn.active { background: var(--surface-1); border-color: var(--hair); color: var(--ink); font-weight: 600; }
+.setup-railtitle { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.setup-railbtn .setup-num { width: 24px; height: 24px; font-size: 12px; flex: none; }
+.setup-railbtn.done .setup-num { background: var(--brand); color: var(--on-brand); border-color: transparent; }
+.setup-railbtn.done .setup-num svg { width: 13px; height: 13px; }
+.setup-panel { border: 1px solid var(--hair); border-radius: var(--r-lg); background: var(--surface-1);
+  padding: 18px 22px; display: flex; flex-direction: column; min-height: 0; }
+.setup-panel > h3 { margin: 0 0 12px; font-size: 17px; }
+.setup-panel .setup-content { flex: 1; min-height: 0; padding-top: 0; }
+.setup-nav { display: flex; align-items: center; gap: 14px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--hair); }
+.setup-count { font: 12px var(--mono); color: var(--muted); margin-right: auto; }
+.setup-fin { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--brand); }
+.setup-fin svg { width: 15px; height: 15px; }
 .setup-num { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; z-index: 1;
   background: var(--surface-2); border: 1px solid var(--hair); font: 700 14px var(--mono); color: var(--brand); }
 .setup-num.done { background: var(--brand); color: var(--on-brand); border-color: transparent; }
@@ -611,10 +795,10 @@ button { font-family: inherit; }
 .faq-list details[open] summary::after { content: "\2212"; }
 .faq-list p { margin: 0 0 20px; color: var(--muted); max-width: 68ch; }
 
-.page-head { position: relative; overflow: hidden; padding: 84px 32px 56px; text-align: center; border-bottom: 1px solid var(--hair-soft); }
-.page-head .inner { position: relative; z-index: 1; max-width: 780px; margin: 0 auto; }
-.page-head h1 { font-size: clamp(30px, 4.6vw, 48px); line-height: 1.1; letter-spacing: -.04em; font-weight: 600; margin: 16px 0 18px; }
-.page-head p { color: var(--ink-dim); font-size: 19px; line-height: 1.4; margin: 0 auto; max-width: 60ch; }
+.site-head { position: relative; overflow: hidden; padding: 84px 32px 56px; text-align: center; border-bottom: 1px solid var(--hair-soft); }
+.site-head .inner { position: relative; z-index: 1; max-width: 780px; margin: 0 auto; }
+.site-head h1 { font-size: clamp(30px, 4.6vw, 48px); line-height: 1.1; letter-spacing: -.04em; font-weight: 600; margin: 16px 0 18px; }
+.site-head p { color: var(--ink-dim); font-size: 19px; line-height: 1.4; margin: 0 auto; max-width: 60ch; }
 
 .usecase { padding: 34px 0; border-bottom: 1px solid var(--hair-soft); scroll-margin-top: 90px; }
 .usecase-head h2 { font-size: 24px; letter-spacing: -.025em; margin: 0 0 8px; }
