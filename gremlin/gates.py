@@ -25,6 +25,15 @@ class GateResult:
     passed: bool
     detail: str
 
+    def __post_init__(self) -> None:
+        # `screen-looks-same` compares perceptual hashes, and imagehash returns
+        # numpy scalars — so its verdict arrived as a numpy.bool_, which json
+        # cannot serialise. In NumPy 2 that type is even NAMED bool, so the
+        # error read "Object of type bool is not JSON serializable", which is
+        # exactly as helpful as it sounds. Coerced here rather than at each
+        # call site: a gate's verdict is a Python bool, whatever computed it.
+        self.passed = bool(self.passed)
+
 
 # ---- Gate 1: the signal is gone on replay -----------------------------------
 
