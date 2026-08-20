@@ -9,6 +9,7 @@ import { formatDuration } from "../lib/notify.js";
 export default function Live() {
   const st = useStore();
   const cur = st.live.current;
+  const done = st.done && st.summary;
 
   return (
     <>
@@ -21,20 +22,24 @@ export default function Live() {
       </div>
 
       <div className="page-body">
-      {st.done && st.summary && <Summary s={st.summary} />}
-
-      <div className="live" style={{ marginTop: st.done && st.summary ? 22 : 0 }}>
-        <div>
+      {/* Once the run is over the phone is a still of a screen nobody is driving
+          any more, so the summary takes that column and gets the wide side of
+          the grid. Stacking it ON TOP pushed the action stream off the bottom of
+          a page that does not scroll — the log measured 2px tall. */}
+      <div className={"live" + (done ? " done" : "")}>
+        <div className="live-main">
+          {done ? <Summary s={st.summary} /> : (
           <div className="phone"><div className="phone-screen">
             {cur?.frame
               ? <img src={`data:image/png;base64,${cur.frame}`} alt="device" />
               : <div className="phone-empty">{st.running ? <><div className="spinner" />waiting for first frame…</> : "press Start run to begin"}</div>}
           </div></div>
+          )}
         </div>
 
         <div className="live-right">
           <div className="intent-card">
-            <div className="k"><Bolt /> Current intention</div>
+            <div className="k"><Bolt /> {done ? "Last intention" : "Current intention"}</div>
             <div className="v">{cur?.intention || "—"}</div>
             <div className="meta">
               {cur ? <><span>step {cur.step}</span><span>·</span><span>{cur.screen}</span>{cur.is_new && <span className="new-badge">· new screen ✦</span>}</> : "idle"}
@@ -61,8 +66,12 @@ export default function Live() {
             </div>
           </div>
 
-          {st.live.bugs.length > 0 && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 9 }}>
+          {/* Only while the run is going. Afterwards the summary beside this
+              already says how many there were and links to triage them, and two
+              cards competing for the last 200px is what clipped the second one
+              in half. */}
+          {st.running && st.live.bugs.length > 0 && (
+            <div className="live-bugs">
               {[...st.live.bugs].reverse().slice(0, 2).map((b, i) => (
                 <div className={"bug-card " + sevClass(b.severity)} key={i}>
                   <div className="sev"><Bug /> {b.severity}</div>

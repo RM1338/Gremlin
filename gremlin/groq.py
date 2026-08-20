@@ -100,6 +100,11 @@ def generate(prompt: str, image_path: Path | None = None, vision_width: int = 54
             break
         except urllib.error.HTTPError as e:
             detail = e.read().decode(errors="replace")
+            # The model being busy is transient; only a 4xx that is not a rate
+            # limit says the request itself is wrong.
+            if e.code in (500, 502, 503, 504) and attempt < max_retries:
+                time.sleep(min(2 ** attempt, 30))
+                continue
             if e.code == 429 and attempt < max_retries:
                 retry_after = e.headers.get("retry-after")
                 wait = min(float(retry_after) if retry_after else 2 ** attempt, 30)

@@ -127,6 +127,12 @@ def generate(prompt: str, image_path: Path | None = None, vision_width: int = 54
                     wait = min(delay or (2 ** attempt), 30)
                     time.sleep(wait)
                     continue
+            # 5xx is the model being busy, not the request being wrong. It was
+            # ending runs at step 1 with "experiencing high demand" — which is
+            # precisely the transient case retrying exists for.
+            if e.code in (500, 502, 503, 504) and attempt < max_retries:
+                time.sleep(min(2 ** attempt, 30))
+                continue
             raise GeminiError(f"Gemini HTTP {e.code}: {detail[:300]}") from e
         except urllib.error.URLError as e:
             if attempt < max_retries:

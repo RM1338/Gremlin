@@ -452,8 +452,13 @@ button { font-family: inherit; }
 .live { display: grid; grid-template-columns: minmax(0, 380px) 1fr; gap: 18px; align-items: stretch;
   flex: 1; min-height: 0; }
 @media (max-width: 940px){ .live { grid-template-columns: 1fr; } }
-.live > :first-child { display: flex; justify-content: center; align-items: center;
+.live-main { display: flex; justify-content: center; align-items: center;
   min-height: 0; min-width: 0; }
+/* After a run the summary is the content, so it takes the wide column and fills
+   it rather than being centred like a device frame. */
+.live.done { grid-template-columns: 1fr minmax(0, 400px); }
+.live.done .live-main { display: block; min-height: 0; overflow: hidden; }
+.live.done .summary { height: 100%; overflow: hidden; margin: 0; }
 /* Sized from the height it is given, capped so it can never be wider than its
    column — an unbounded width is what cut the screen in half. */
 .phone { position: relative; margin: 0 auto; max-height: 100%; max-width: 100%;
@@ -466,6 +471,9 @@ button { font-family: inherit; }
 .spinner { width: 26px; height: 26px; border-radius: 50%; border: 2.5px solid var(--hair); border-top-color: var(--brand); animation: spin .8s linear infinite; margin: 0 auto 14px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .live-right { display: flex; flex-direction: column; gap: 12px; min-width: 0; min-height: 0; }
+/* The bugs keep their full height and the log gives up space instead — a bug
+   card cut off at the fold is the one thing on this page you must not miss. */
+.live-bugs { display: flex; flex-direction: column; gap: 9px; flex: none; }
 .intent-card { border-radius: var(--r-lg); border: 1px solid var(--hair);
   background: color-mix(in srgb, var(--brand) 5%, var(--surface-1)); border-left: 3px solid var(--brand); padding: 18px 20px; }
 .intent-card .k { font: 600 10px var(--mono); letter-spacing: .14em; text-transform: uppercase; color: var(--brand); display: flex; align-items: center; gap: 8px; }
