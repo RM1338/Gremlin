@@ -74,13 +74,19 @@ def main() -> None:
     else:
         cfg = Config()
     cfg.run_dir = Path(args.run)
-    bugs = _load_bugs(cfg.run_dir / "trace.json")
+    all_bugs = _load_bugs(cfg.run_dir / "trace.json")
+    bugs = all_bugs
     # The "no new breakage" gate compares a post-fix re-exploration against every
     # bug already known from this run — so the baseline must be ALL bugs, computed
     # before any --kind filter, or the run's other pre-existing bugs look "new".
     baseline_keys = {b.dedup_key for b in bugs}
     if args.kind:
         bugs = [b for b in bugs if b.kind == args.kind]
+    # The reports are numbered by position in the RUN, and --kind filters that
+    # list — so enumerating the filtered one wrote the crash's gate ladder into
+    # bug_001.fix.json, where the console showed it under the layout bug. Keep
+    # each bug's own number.
+    numbers = {id(b): n for n, b in enumerate(all_bugs, 1)}
     if not bugs:
         print("no bugs in this run to fix.")
         return
@@ -103,10 +109,10 @@ def main() -> None:
     # complete even on an autofix run.
     write_reports(bugs, cfg)
     try:
-        for i, bug in enumerate(bugs, 1):
+        for bug in bugs:
             outcome = fix_one(cfg, bug, baseline_keys,
                               do_rebuild=not args.no_rebuild, backend=backend)
-            _persist_outcome(cfg.run_dir, i, outcome)
+            _persist_outcome(cfg.run_dir, numbers[id(bug)], outcome)
             mark = "VERIFIED ✓" if outcome.verified else "reverted"
             print(f"[{mark}] {bug.title()}  (branch {outcome.branch})")
             for g in outcome.gates:
