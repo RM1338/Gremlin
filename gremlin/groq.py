@@ -36,6 +36,26 @@ class GroqError(RuntimeError):
     pass
 
 
+# Groq sits behind Cloudflare, which blocks the stdlib's default agent.
+_UA = "Mozilla/5.0 (X11; Linux x86_64) Gremlin/1.0"
+
+
+def _available_models(key: str) -> list[str]:
+    """What Groq serves right now. Best-effort: never raises, never blocks long.
+
+    Used only to make a model_not_found actionable, so a failure to list must
+    not replace the real error with a worse one.
+    """
+    try:
+        req = urllib.request.Request(
+            "https://api.groq.com/openai/v1/models",
+            headers={"Authorization": f"Bearer {key}", "User-Agent": _UA})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return sorted(m["id"] for m in json.load(r).get("data", []))
+    except Exception:
+        return []
+
+
 def _is_reasoning_model(name: str) -> bool:
     """Whether this model thinks before answering, and so accepts an effort dial."""
     return any(tag in name.lower() for tag in ("qwen3", "gpt-oss", "deepseek-r1"))
@@ -90,7 +110,7 @@ def generate(prompt: str, image_path: Path | None = None, vision_width: int = 54
     headers = {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {key}",
-        "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) Gremlin/1.0",
+        "User-Agent": _UA,
     }
     for attempt in range(max_retries + 1):
         req = urllib.request.Request(_ENDPOINT, data=body, headers=headers)
@@ -110,6 +130,15 @@ def generate(prompt: str, image_path: Path | None = None, vision_width: int = 54
                 wait = min(float(retry_after) if retry_after else 2 ** attempt, 30)
                 time.sleep(wait)
                 continue
+            # Groq retires hosted models without notice, so this is not a rare
+            # path — and "does not exist or you do not have access to it" tells
+            # you nothing about what to switch to. Ask, and say.
+            if e.code == 404 and "model_not_found" in detail:
+                raise GroqError(
+                    f"Groq no longer serves '{MODEL}'. Currently available: "
+                    f"{', '.join(_available_models(key)) or 'could not list'}. "
+                    f"Set GROQ_MODEL, or pick one on the console's Settings page."
+                ) from e
             raise GroqError(f"Groq HTTP {e.code}: {detail[:300]}") from e
         except urllib.error.URLError as e:
             if attempt < max_retries:
