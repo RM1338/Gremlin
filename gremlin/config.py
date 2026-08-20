@@ -10,6 +10,14 @@ import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from ._env import load_dotenv
+
+# The paths below are read from the environment at import time, so .env has to
+# be loaded before that happens. The model backends load it for their own keys,
+# but they are imported lazily and far too late for these. Real environment
+# variables still win — load_dotenv() only ever setdefault()s.
+load_dotenv()
+
 
 # Where the developer's Flutter projects live; scanned to build the target list.
 # Overridable because the containerised install has no developer home to scan —
@@ -40,6 +48,13 @@ class Config:
     # matches against and the rules the Tier-2 fixer works under. Empty means
     # "not identified"; the default is kept for backward compatibility.
     platform: str = "flutter"
+
+    # Which policy chooses the next action. "vision" asks the configured vision
+    # model; "coverage" is the no-LLM ablation arm that always takes the next
+    # untapped control (docs/KNOWN_ISSUES.md, G4). Comparing the two is what
+    # establishes whether the model is load-bearing at all — until that number
+    # exists, every claim about the model's contribution is unmeasured.
+    policy: str = "vision"
 
     # adb device serial; None means "the only connected device". An emulator
     # looks like "emulator-5554" and is driven exactly like a physical phone.

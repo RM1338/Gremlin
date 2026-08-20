@@ -1,0 +1,174 @@
+"""Fabricate a complete run under runs/latest, for working on the console.
+
+The console is mostly empty until a run has happened, which makes it impossible
+to judge — or design — without a device attached. This writes a plausible run:
+a trace, three bugs across all three severities, the Tier-0/1/2 artifacts the
+Bugs page renders, an eval table, and placeholder screenshots.
+
+    python scripts/seed_demo_run.py
+
+Everything lands under runs/, which is git-ignored. It is demo data and is
+labelled as such in the payload, so it can never be mistaken for a real result.
+"""
+
+from __future__ import annotations
+
+import json
+import random
+from pathlib import Path
+
+from PIL import Image, ImageDraw
+
+ROOT = Path(__file__).resolve().parent.parent
+RUN = ROOT / "runs" / "latest"
+SCREENS = RUN / "screens"
+REPORTS = RUN / "reports"
+
+W, H = 360, 760
+SCREEN_NAMES = [
+    "Home", "Library", "Recording detail", "Search", "Settings",
+    "Account", "Export sheet", "Playback",
+]
+
+
+def _mock_screen(path: Path, title: str, seed: int, broken: bool = False) -> None:
+    """A stand-in phone screenshot: a title bar, some list rows, a nav bar."""
+    rnd = random.Random(seed)
+    img = Image.new("RGB", (W, H), (18, 21, 28))
+    d = ImageDraw.Draw(img)
+    d.rectangle([0, 0, W, 96], fill=(29, 34, 45))
+    d.text((20, 52), title, fill=(238, 241, 246))
+    y = 120
+    while y < H - 120:
+        h = rnd.choice((64, 64, 88))
+        d.rounded_rectangle([16, y, W - 16, y + h], radius=10, fill=(23, 27, 36))
+        d.rectangle([32, y + 18, 32 + rnd.randint(90, 200), y + 26], fill=(90, 100, 115))
+        d.rectangle([32, y + 38, 32 + rnd.randint(50, 130), y + 44], fill=(60, 68, 80))
+        y += h + 12
+    if broken:  # a band bleeding off the right edge, like an overflow
+        d.rectangle([120, 300, W + 60, 348], fill=(246, 171, 61))
+    d.rectangle([0, H - 72, W, H], fill=(29, 34, 45))
+    for i in range(4):
+        d.ellipse([34 + i * 84, H - 50, 58 + i * 84, H - 26], fill=(70, 79, 92))
+    img.save(path)
+
+
+TRACE = [
+    ("tap", "Library", "open the library, unvisited"),
+    ("tap", "Recent recording", "a list item leads to a detail screen"),
+    ("scroll", "down", "reveal controls below the fold"),
+    ("back", None, "screen fully covered, backing out"),
+    ("tap", "Search", "search is untried"),
+    ("type", "hello", "fill the field to reach results"),
+    ("tap", "Settings", "last untapped section"),
+    ("tap", "Export", "opens a sheet with an unfitting row"),
+]
+
+BUGS = [
+    dict(severity="layout", kind="renderflex-overflow", step=8,
+         log_line="I/flutter (12043): A RenderFlex overflowed by 42 pixels on the right.",
+         dart_file="lib/screens/export_sheet.dart", dart_line=64,
+         verified=True),
+    dict(severity="crash", kind="dart-exception", step=6,
+         log_line="E/flutter (12043): Unhandled Exception: Null check operator used on a null value",
+         dart_file="lib/screens/search_screen.dart", dart_line=112,
+         verified=False),
+    dict(severity="hang", kind="jank", step=3,
+         log_line="I/Choreographer(12043): Skipped 47 frames!  The application may be doing too much work on its main thread.",
+         dart_file=None, dart_line=None, verified=None),
+]
+
+
+def main() -> None:
+    SCREENS.mkdir(parents=True, exist_ok=True)
+    REPORTS.mkdir(parents=True, exist_ok=True)
+
+    for i, name in enumerate(SCREEN_NAMES, 1):
+        _mock_screen(SCREENS / f"step_{i:03d}.png", name, i)
+    for i, b in enumerate(BUGS, 1):
+        _mock_screen(SCREENS / f"bug_{i:03d}.png", f"{b['kind']}", 90 + i,
+                     broken=b["severity"] == "layout")
+        b["screenshot"] = f"runs/latest/screens/bug_{i:03d}.png"
+
+    trace = [
+        {"verb": v, **({"target_label": t} if v == "tap" else {}),
+         **({"text": t} if v == "type" else {}),
+         **({"direction": t} if v == "scroll" else {}),
+         **({"x": 180, "y": 300} if v == "tap" else {}), "reason": r}
+        for v, t, r in TRACE
+    ]
+
+    bugs = []
+    for i, b in enumerate(BUGS, 1):
+        loc = f" @ {b['dart_file']}:{b['dart_line']}" if b["dart_file"] else ""
+        bugs.append({
+            "severity": b["severity"], "kind": b["kind"], "title": f"{b['kind']}{loc}",
+            "log_line": b["log_line"],
+            "context": [b["log_line"], "I/flutter (12043):     at _RenderLayoutBuilder.performLayout"],
+            "dart_file": b["dart_file"], "dart_line": b["dart_line"],
+            "screenshot": b["screenshot"], "step": b["step"],
+            "dedup_key": f"{b['kind']}|{b['dart_file']}:{b['dart_line']}",
+            "trace": trace[: b["step"]],
+        })
+        (REPORTS / f"bug_{i:03d}.md").write_text(
+            f"# Bug: {bugs[-1]['title']}\n\n**Severity:** {b['severity']}\n\n"
+            f"## Matched log line\n\n```\n{b['log_line']}\n```\n")
+        (REPORTS / f"bug_{i:03d}.prompt.md").write_text(
+            f"I have a Flutter app bug found by automated UI exploration.\n\n"
+            f"**Signal (ground truth from `adb logcat`):**\n```\n{b['log_line']}\n```\n\n"
+            f"Please fix the root cause so this log signal no longer appears.\n")
+        if b["verified"] is not None:
+            (REPORTS / f"bug_{i:03d}.fix.json").write_text(json.dumps({
+                "verified": b["verified"],
+                "branch": f"gremlin/fix-{b['kind']}-1755600000",
+                "note": ("verified — patch cleared all three gates; left on branch for review"
+                         if b["verified"] else "reverted — failed gate(s): screen-looks-same"),
+                "guard_violations": [],
+                "gates": [
+                    {"name": "signal-gone", "passed": True,
+                     "detail": "target signal absent on replay"},
+                    {"name": "screen-looks-same", "passed": b["verified"],
+                     "detail": ("perceptual distance 18 (<= 32)" if b["verified"]
+                                else "screen changed too much (distance 41) — widget likely removed")},
+                    {"name": "no-new-breakage", "passed": b["verified"],
+                     "detail": "no new signals introduced" if b["verified"] else "not reached"},
+                ],
+            }, indent=2))
+
+    (RUN / "trace.json").write_text(json.dumps({
+        "package": "com.gremlin.gremlin_bench",
+        "demo": True,  # so this can never be mistaken for a measured result
+        "steps": len(trace), "distinct_screens": len(SCREEN_NAMES),
+        "summary": {
+            "steps": len(trace), "screens": len(SCREEN_NAMES), "bugs": len(bugs),
+            "duration_sec": 148.6,
+            "verbs": {"tap": 5, "scroll": 1, "type": 1, "back": 1},
+            "sections": ["Export", "Library", "Recent recording", "Search", "Settings"],
+            "bugs_by_severity": {"layout": 1, "crash": 1, "hang": 1},
+            "controls_tapped": 19, "controls_seen": 19, "complete": True,
+            "note": "Coverage complete — tapped every reachable control (19 across 8 screens).",
+            "ended_early": False,
+        },
+        "trace": trace, "bugs": bugs,
+    }, indent=2))
+
+    (RUN / "eval.json").write_text(json.dumps({
+        "package": "com.gremlin.gremlin_bench", "platform": "flutter",
+        "actions": 30, "seed": 0, "demo": True,
+        "results": [
+            {"explorer": "gremlin-vision", "actions": 30, "distinct_screens": 8,
+             "distinct_bugs": 3, "duration_sec": 148.6},
+            {"explorer": "gremlin-coverage", "actions": 30, "distinct_screens": 7,
+             "distinct_bugs": 3, "duration_sec": 61.2},
+            {"explorer": "monkey", "actions": 30, "distinct_screens": 3,
+             "distinct_bugs": 1, "duration_sec": 44.0},
+        ],
+    }, indent=2))
+
+    print(f"seeded demo run in {RUN}")
+    print(f"  {len(SCREEN_NAMES)} screens, {len(bugs)} bugs, eval with 3 arms")
+    print("  DEMO DATA — every payload carries \"demo\": true")
+
+
+if __name__ == "__main__":
+    main()

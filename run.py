@@ -96,6 +96,9 @@ def main() -> None:
     ap = argparse.ArgumentParser(
         description="Gremlin — autonomous UI testing for Flutter and React Native")
     ap.add_argument("--steps", type=int, default=None, help="exploration step budget")
+    ap.add_argument("--policy", choices=("vision", "coverage"), default=None,
+                    help="who picks the next action: 'vision' (the model, default) or "
+                         "'coverage' (no model at all — the G4 ablation arm)")
     ap.add_argument("--serial", default=None, help="adb device serial")
     ap.add_argument("--project", default=None, help="path to an app project to test")
     ap.add_argument("--package", default=None, help="test an installed package directly (device-only)")
@@ -139,6 +142,8 @@ def main() -> None:
     cfg = _resolve_config(args)
     if args.steps is not None:
         cfg.max_steps = args.steps
+    if args.policy is not None:
+        cfg.policy = args.policy
 
     started = _resolve_device(args)
     # An explicit --serial always wins; otherwise a booted emulator is the device.

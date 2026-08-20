@@ -62,6 +62,37 @@ Reply with ONLY a JSON object, no prose, no code fence:
 """
 
 
+# The text the coverage-only arm types into fields. The vision policy chooses
+# text per screen; the ablation arm must not, so one fixed string stands in —
+# enough to get past a search box or a login field with no inference at all.
+COVERAGE_TEXT = "gremlin"
+
+
+def decide_coverage_only(_elements: list[Element]) -> Decision:
+    """The no-LLM ablation arm (docs/KNOWN_ISSUES.md, G4).
+
+    Returns a Decision that always defers to the explorer's own coverage logic.
+    `Explorer._choose_and_execute` takes the next untapped control itself
+    whenever the verb is not a usable "tap" pick, and falls back to
+    type -> scroll -> back once a screen is exhausted. Naming the verb "type"
+    keeps that final ladder intact.
+
+    So the two arms differ in exactly two things: who ORDERS the untapped
+    controls, and what text gets typed. Everything else — accessibility-tree
+    grounding, coverage memory, the stopping rule — is held constant, which is
+    what makes the comparison an ablation of the model rather than of the
+    engine.
+    """
+    return Decision(
+        verb="type",
+        index=None,
+        text=COVERAGE_TEXT,
+        direction=None,
+        reason="coverage-only policy (no model)",
+        screen_name="",
+    )
+
+
 def decide(
     screenshot_path: Path,
     elements: list[Element],

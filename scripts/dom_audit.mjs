@@ -10,13 +10,17 @@
 import { createRequire } from "node:module";
 import { mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 // puppeteer-core is a devDependency of the console, not of the repo root, so
-// resolve it from there rather than relying on where node was invoked.
+// resolve it from there rather than relying on where node was invoked. Recent
+// versions ship ESM only, so resolve the path with createRequire but load it
+// with a dynamic import — require() of an ESM module throws ERR_REQUIRE_ESM.
 const require = createRequire(join(ROOT, "frontend/"));
-const puppeteer = require("puppeteer-core");
+const puppeteer = (await import(
+  pathToFileURL(require.resolve("puppeteer-core")).href
+)).default;
 
 const W = Number(process.argv[2] || 1920);
 const H = Number(process.argv[3] || 1080);

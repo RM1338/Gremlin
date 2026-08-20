@@ -82,6 +82,7 @@ class Oracle:
         self._lock = threading.Lock()
         self._cursor = 0  # index into the logical line stream already drained
         self._total = 0  # total lines ever appended
+        self._pid: str | None = None  # the pid the stream is currently pinned to
 
     def _resolve_pid(self) -> str | None:
         if not self.package:
@@ -97,6 +98,7 @@ class Oracle:
         # Scope to the app's process so background apps (music, system) can't have
         # their jank/errors misattributed to the app under test.
         pid = self._resolve_pid()
+        self._pid = pid
         if pid:
             cmd += ["--pid", pid]
         # logcat can emit non-UTF-8 bytes; decode leniently so the reader thread
@@ -166,6 +168,50 @@ class Oracle:
                     continue
                 return self.platform.normalize_source_path(raw), int(m.group(2))
         return None, None
+
+    def restart(self) -> None:
+        """Re-attach the stream to the app's current process.
+
+        Clears the buffered lines along with the log itself: everything in them
+        belongs to a process that no longer exists, and the cursor arithmetic in
+        drain() is only meaningful against one continuous stream.
+        """
+        old_thread = self._thread
+        self.stop()
+        if old_thread is not None:
+            old_thread.join(timeout=2.0)
+        with self._lock:
+            self._lines.clear()
+            self._cursor = 0
+            self._total = 0
+        self.start()
+
+    def ensure_attached(self) -> bool:
+        """Re-attach if the app is now a different process. True if it did.
+
+        The stream is scoped to the app's pid so that other processes cannot
+        contaminate a run — but that pin goes stale the moment the app's process
+        is replaced, and then it matches nothing at all. The oracle does not
+        error; it simply stops seeing anything, for the rest of the run, and the
+        app is reported clean rather than unwatched.
+
+        Two things replace the process. The explorer force-stops and relaunches
+        in `_ensure_on_app` when a tap strands it in another app. And — the case
+        that matters more — **any crash the oracle successfully detects kills the
+        process**, after which Android may restart it. For a tool whose whole
+        job is finding crashes, a stale pin is a consequence of success, not an
+        edge case (docs/KNOWN_ISSUES.md, G1).
+        """
+        if not self.package or self._pid is None:
+            return False  # an unscoped stream has no pin to go stale
+        current = self._resolve_pid()
+        if current is None or current == self._pid:
+            # None means the app is not up at this instant. Restarting now would
+            # resolve no pid and silently drop the filter, letting every other
+            # app's noise into the run — worse than waiting for the next step.
+            return False
+        self.restart()
+        return True
 
     def stop(self) -> None:
         if self._proc:

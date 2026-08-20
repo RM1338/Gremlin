@@ -26,7 +26,7 @@ from .device import Device
 from .grounding import dump_elements, Element
 from .models import Action, Bug
 from .oracle import Oracle
-from .policy import decide
+from .policy import decide, decide_coverage_only
 from .screen_memory import ScreenMemory
 from .vision import ModelError
 
@@ -146,11 +146,19 @@ class Explorer:
                 "NOTE: you keep returning to screens you have already seen. Tap an "
                 "element you have NOT tried yet, or press back to leave this area.\n"
             )
-        decision = decide(
-            shot_path, elements, self.memory.summary(), self.cfg.vision_width,
-            recent=self._recent_summary(), stuck=stuck_hint,
-        )
-        screen_id, _ = self.memory.observe(shot, decision.screen_name)
+        if self.cfg.policy == "coverage":
+            # The ablation arm: no inference at all. Everything downstream —
+            # grounding, coverage bookkeeping, the stopping rule — is identical,
+            # so any difference in the result is attributable to the model.
+            decision = decide_coverage_only(elements)
+        else:
+            decision = decide(
+                shot_path, elements, self.memory.summary(), self.cfg.vision_width,
+                recent=self._recent_summary(), stuck=stuck_hint,
+            )
+        # The coverage arm names no screens; fall back to ScreenMemory's own
+        # positional naming rather than labelling every screen with one string.
+        screen_id, _ = self.memory.observe(shot, decision.screen_name or None)
 
         # Register this screen's clickable controls and find the untapped ones.
         seen = self._seen_elems.setdefault(screen_id, set())
@@ -212,11 +220,30 @@ class Explorer:
         for _ in range(3):
             fg = self.dev.foreground_package()
             if fg is None or fg == self.cfg.package:
+                self._reattach_oracle()
                 return
             self.dev.back()
             time.sleep(0.6)
         if self.dev.foreground_package() not in (None, self.cfg.package):
             self.dev.relaunch(self.cfg.package, self.cfg.activity)
+        self._reattach_oracle()
+
+    def _reattach_oracle(self) -> None:
+        """Keep the oracle watching the process that is actually running.
+
+        Checked on every step, not only after we relaunch: a crash we detected
+        can kill and restart the app on its own, and a stream pinned to the dead
+        pid goes silently deaf (docs/KNOWN_ISSUES.md, G1). One `pidof` per step
+        is a few percent of a step's cost and buys back every signal after the
+        first crash.
+        """
+        if not self.oracle.ensure_attached():
+            return
+        # The stream is new and empty. Let the app settle, then discard the
+        # relaunch's own noise so it is not attributed to the next action.
+        time.sleep(0.8)
+        self.oracle.drain()
+        print("  .. oracle re-attached (app process changed)")
 
     def _recent_summary(self, n: int = 5) -> str:
         """A one-line digest of the last n actions, for the policy prompt."""
