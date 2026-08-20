@@ -19,6 +19,7 @@ import asyncio
 import base64
 import json
 import threading
+import traceback
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -104,6 +105,18 @@ def _start_run() -> None:
 
             if bugs:
                 write_reports(bugs, _cfg)
+        except BaseException as e:
+            # Any unexpected failure has to reach the browser. Without this the
+            # thread died silently, no `done` was ever emitted, and the console
+            # sat on "waiting for first frame" for as long as you left it —
+            # while the phone stayed awake. An ugly summary beats a hang.
+            traceback.print_exc()
+            _on_event("done", {
+                "steps": 0, "screens": 0, "bugs": 0, "duration_sec": 0,
+                "verbs": {}, "sections": [], "bugs_by_severity": {},
+                "complete": False, "ended_early": True,
+                "note": f"The run failed: {type(e).__name__}: {e}"[:400],
+            })
         finally:
             global _run_started
             _run_started = False

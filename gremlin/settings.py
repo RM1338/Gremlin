@@ -191,6 +191,24 @@ def validate(patch: dict) -> list[str]:
             problems.append(f"{f.label}: '{v}' is not one of {', '.join(c or '(auto)' for c in f.choices)}")
         if f.kind == "int" and v and not v.isdigit():
             problems.append(f"{f.label}: '{v}' is not a whole number")
+    # A key is an opaque ASCII token. Pasting something else in — an error
+    # message, a whole curl command — is a very easy mistake to make, and it is
+    # only ever discovered later, as a UnicodeEncodeError from deep inside
+    # http.client while a phone sits awake waiting for a first frame.
+    for key, raw in patch.items():
+        f = by_key.get(key)
+        if f is None or f.kind != "secret":
+            continue
+        v = (raw or "").strip()
+        if not v:
+            continue
+        if not v.isascii() or any(c.isspace() for c in v):
+            problems.append(
+                f"{f.label}: that does not look like a key — it has spaces or "
+                f"non-ASCII characters in it. Paste the token on its own.")
+        elif len(v) > 200:
+            problems.append(f"{f.label}: {len(v)} characters is too long for a key")
+
     # The one cross-field rule worth enforcing: an agent that is not installed
     # cannot write a patch, and finding that out mid-run is the bad way.
     backend = (patch.get("FIX_BACKEND") or os.environ.get("FIX_BACKEND", "prompt")).strip()
