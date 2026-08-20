@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Mascot from "../lib/Mascot.jsx";
-import { Bolt, Screens, Steps, Bug } from "../lib/icons.jsx";
-import { CountUp, Spark } from "../lib/ui.jsx";
+import { Bolt, Screens, Steps, Bug, Check } from "../lib/icons.jsx";
+import { CountUp, Spark, Lightbox, screenUrl } from "../lib/ui.jsx";
 import { useStore } from "../lib/useStore.js";
 import { startRun, evalArms } from "../lib/store.js";
 import { mascotState, mascotLine } from "../lib/mascotState.js";
@@ -23,6 +23,10 @@ export default function Overview() {
   const g = arms?.vision, m = arms?.monkey;
   const mult = g && m && m.distinct_screens ? Math.round(g.distinct_screens / m.distinct_screens) : null;
 
+  const [zoom, setZoom] = useState(null);
+  const shots = (st.screens || []).filter((n) => n.startsWith("step_")).sort();
+  const sum = t.summary || {};
+
   async function start() { try { await startRun(); nav("/app/live"); } catch {} }
 
   return (
@@ -39,7 +43,7 @@ export default function Overview() {
             <button className="btn btn-ghost" onClick={() => nav("/app/benchmark")}>See the benchmark →</button>
           </div>
         </div>
-        <div className="hero-mascot"><Mascot size={132} state={mascotState(st)} /></div>
+        <div className="hero-mascot"><Mascot size={132} state={mascotState(st)} className="hero-nib" /></div>
       </section>
 
       <div className="stat-grid">
@@ -69,11 +73,48 @@ export default function Overview() {
                 <div className="live-stat"><div className="v">{screens}</div><div className="k">Screens</div></div>
                 <div className="live-stat"><div className="v">{bugs}</div><div className="k">Bugs</div></div>
               </div>
-              <div className={"pill " + (bugs ? "" : "brand")} style={{ marginTop: 14 }}>{bugs ? `${bugs} to triage` : "✓ clean run"}</div>
+              {/* The action mix says what KIND of run it was — thirty taps and
+                  nothing else is a different run from a mix of four verbs, and
+                  the totals above cannot show that. */}
+              <VerbMix verbs={sum.verbs} />
+              <div className={"pill " + (bugs ? "" : "brand")} style={{ marginTop: 12 }}>
+                {bugs ? `${bugs} to triage` : <><Check /> clean run</>}
+              </div>
             </>
           ) : <p className="note">No run yet. Press <b>Start a run</b> to watch Gremlin explore.</p>}
         </div>
+
+        <div className="card">
+          <div className="section-head"><h3>This machine</h3><a onClick={() => nav("/app/setup")}>Setup →</a></div>
+          <KV k="Device" v={st.serial || st.devices?.[0]?.serial || "none attached"} />
+          <KV k="Target" v={st.selected?.name || t.package || "—"} />
+          <KV k="Toolkit" v={st.selected?.platform_label || "—"} />
+          <KV k="Tier-2 backend" v={st.fixBackend} />
+          <KV k="Coverage" v={sum.controls_tapped != null
+            ? `${sum.controls_tapped} of ${sum.controls_seen} controls` : "—"} />
+        </div>
       </div>
+
+      {/* Whatever height is left goes to the frames the last run actually saw.
+          It is the one thing on this page that is evidence rather than a
+          summary, and it collapses to nothing on a short window. */}
+      {shots.length > 0 && (
+        <div className="card ov-screens">
+          <div className="section-head">
+            <h3>Screens reached</h3>
+            <a onClick={() => nav("/app/trace")}>View the trace →</a>
+          </div>
+          <div className="ov-strip">
+            {shots.map((n, i) => (
+              <div className="ov-shot" key={n} title={`step ${i + 1} — click to enlarge`}
+                   onClick={() => setZoom({ src: screenUrl(n), cap: `step ${String(i + 1).padStart(3, "0")}` })}>
+                <img loading="lazy" src={screenUrl(n)} alt="" />
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+      <Lightbox src={zoom?.src} caption={zoom?.cap} onClose={() => setZoom(null)} />
       </div>
     </>
   );
@@ -89,5 +130,28 @@ function StatTile({ icon, k, v, foot, suffix }) {
     </div>
   );
 }
+function KV({ k, v }) {
+  return <div className="ov-kv"><span>{k}</span><span className="v">{v}</span></div>;
+}
+
+/* The same four verbs the Live summary shows, as one bar. */
+function VerbMix({ verbs }) {
+  const order = ["tap", "type", "scroll", "back"];
+  const total = Object.values(verbs || {}).reduce((a, b) => a + b, 0);
+  if (!total) return null;
+  return (
+    <>
+      <div className="verbbar" style={{ marginTop: 14 }}>
+        {order.filter((v) => verbs[v]).map((v) => (
+          <span key={v} className={v} style={{ width: `${(verbs[v] / total) * 100}%` }} title={`${v}: ${verbs[v]}`} />
+        ))}
+      </div>
+      <div className="chips" style={{ marginTop: 8 }}>
+        {order.filter((v) => verbs[v]).map((v) => <span className="chip" key={v}>{v} · {verbs[v]}</span>)}
+      </div>
+    </>
+  );
+}
+
 function Node({ n, t, d }) { return <div className="pl-node"><div className="n">{n}</div><div className="t">{t}</div><div className="d">{d}</div></div>; }
 

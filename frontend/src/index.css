@@ -382,25 +382,52 @@ button { font-family: inherit; }
 /* align-items:start, so a card is as tall as what is in it. Stretching them to
    the pane left "The loop" and "Latest run" as mostly empty boxes running to
    the bottom of the page. */
-.grid-2 { display: grid; grid-template-columns: 1.4fr 1fr; gap: 10px; flex: 1; min-height: 0;
+.grid-2 { display: grid; grid-template-columns: 1.5fr 1fr 1fr; gap: 10px; flex: none;
   align-items: start; align-content: start; }
 .grid-2 > * { min-height: 0; }
+@media (max-width: 1180px){ .grid-2 { grid-template-columns: 1.4fr 1fr; } }
+
+/* A label/value row, for the machine card. */
+.ov-kv { display: flex; justify-content: space-between; gap: 14px; align-items: baseline;
+  padding: 6px 0; border-top: 1px solid var(--hair); font-size: 13px; color: var(--muted); }
+.ov-kv .v { color: var(--ink-dim); font: 600 12.5px var(--mono); min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* The frames strip takes whatever height is left, and no more. Its thumbs are
+   sized FROM that height, so on a short window the row simply gets small and on
+   a tall one it gets generous — the page fills either way without scrolling. */
+.ov-screens { display: flex; flex-direction: column; flex: 1; min-height: 0; margin-top: 10px; }
+.ov-strip { display: flex; gap: 10px; flex: 1; min-height: 0; overflow: hidden; margin-top: 10px; }
+.ov-shot { height: 100%; aspect-ratio: 1080/2340; flex: none; border-radius: 10px; overflow: hidden;
+  background: #05070a; border: 1px solid var(--hair); cursor: zoom-in;
+  transition: border-color .15s, transform .15s var(--ease-out); }
+.ov-shot:hover { border-color: var(--brand); transform: translateY(-3px); }
+.ov-shot img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
 /* Short screens: tighten chrome, not content. Now that the cards size to what
    is in them they no longer silently squash to fit, so the last few px have to
    come from padding. */
+/* Short screens get the compact dashboard: the two cards that answer "what
+   happened" stay, and the two that are context — this machine, and the strip of
+   frames — stand down. Nothing here scrolls, so on a 720px laptop the choice is
+   which panels appear, not whether they fit. */
 @media (max-height: 820px) {
   .hero { padding: 14px 22px; }
   .stat { padding: 8px 13px; }
   .pl-node { padding: 6px 6px; }
   .stat-grid { margin-bottom: 8px; }
+  .ov-screens { display: none; }
+  .grid-2 { grid-template-columns: 1.4fr 1fr; }
+  .grid-2 > :nth-child(3) { display: none; }
+  .grid-2 .chips { display: none; }
+  .hero-mascot { width: 112px; height: 112px; }
 }
 @media (max-width: 1000px){ .grid-2 { grid-template-columns: 1fr; } }
 .pipeline { display: flex; align-items: center; flex-wrap: wrap; }
-.pl-node { flex: 1; min-width: 104px; text-align: center; padding: 8px 6px; border-radius: var(--r-md); border: 1px dashed var(--hair); }
+.pl-node { flex: 1; min-width: 84px; text-align: center; padding: 8px 5px; border-radius: var(--r-md); border: 1px dashed var(--hair); }
 .pl-node .n { font: 700 10px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--brand); }
-.pl-node .t { font-weight: 600; margin-top: 6px; } .pl-node .d { font-size: 12px; color: var(--muted); margin-top: 3px; }
-.pl-arrow { color: var(--faint); padding: 0 4px; }
+.pl-node .t { font-weight: 600; margin-top: 5px; font-size: 14px; } .pl-node .d { font-size: 11.5px; color: var(--muted); margin-top: 3px; }
+.pl-arrow { color: var(--faint); padding: 0 2px; flex: none; }
 .live-stats { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; }
 .live-stat { border: 1px solid var(--hair); border-radius: var(--r-md); background: var(--surface-1); padding: 14px 16px; }
 .live-stat .v { font-size: 26px; font-weight: 700; font-variant-numeric: tabular-nums; }
