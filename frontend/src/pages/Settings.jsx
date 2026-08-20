@@ -19,6 +19,7 @@ export default function Settings() {
   const [secretDraft, setSecretDraft] = useState({});   // typed keys, never read back
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState(null);
+  const [tab, setTab] = useState("remediation");
   const user = getUser();
   const [profile, setProfile] = useState({ name: user?.name || "", email: user?.email || "" });
 
@@ -28,6 +29,8 @@ export default function Settings() {
   }, []);
 
   if (!cfg) return <div className="page-body"><p className="note">Loading settings…</p></div>;
+
+  const tabs = [...cfg.groups, { key: "profile", label: "Profile" }];
 
   const set = (k, v) => setDraft((d) => ({ ...d, [k]: v }));
   const shown = (f) => !f.depends_on || draft[f.depends_on[0]] === f.depends_on[1];
@@ -67,9 +70,22 @@ export default function Settings() {
         </p>
       </div>
 
-      <div className="page-body scrolls">
+      <div className="page-body">
+        {/* One group at a time, because nothing in the console scrolls and a
+            form has no natural length. Tabs also stop the page reading as a
+            wall of settings when four of the five are irrelevant right now. */}
+        <div className="set-tabs" role="tablist">
+          {tabs.map((g) => (
+            <button key={g.key} role="tab" aria-selected={g.key === tab}
+                    className={"set-tab" + (g.key === tab ? " active" : "")}
+                    onClick={() => setTab(g.key)}>
+              {GROUP_ICON[g.key]}{g.label}
+            </button>
+          ))}
+        </div>
+
         <div className="set-grid">
-          {cfg.groups.map((g) => (
+          {cfg.groups.filter((g) => g.key === tab).map((g) => (
             <section className="card set-card" key={g.key}>
               <div className="set-head">{GROUP_ICON[g.key]}<h3>{g.label}</h3></div>
               <p className="note set-lede">{g.help}</p>
@@ -81,15 +97,18 @@ export default function Settings() {
                 </div>
               )}
 
+              <div className="set-fields">
               {cfg.fields.filter((f) => f.group === g.key && shown(f)).map((f) => (
                 <FieldRow key={f.key} f={f} value={draft[f.key] ?? ""} onChange={set}
                           secretSet={cfg.secrets[f.key]}
                           secretDraft={secretDraft[f.key] ?? ""}
                           onSecret={(v) => setSecretDraft((s) => ({ ...s, [f.key]: v }))} />
               ))}
+              </div>
             </section>
           ))}
 
+          {tab === "profile" && (
           <section className="card set-card">
             <div className="set-head"><span className="avatar">{initials(user)}</span><h3>Profile</h3></div>
             <p className="note set-lede">
@@ -108,6 +127,7 @@ export default function Settings() {
             </label>
             <button className="btn" style={{ marginTop: 12 }} onClick={saveProfile}>Update profile</button>
           </section>
+          )}
         </div>
       </div>
 

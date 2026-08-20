@@ -733,8 +733,20 @@ button { font-family: inherit; }
 /* ---- Settings --------------------------------------------------------------
    Two columns of cards, a sticky action bar at the foot. This is the one console
    page with a save button, so the bar never scrolls away from you. */
+.set-tabs { display: flex; gap: 4px; flex: none; margin-bottom: 12px; flex-wrap: wrap; }
+.set-tab { display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px;
+  border-radius: 999px; border: 1px solid transparent; background: none; cursor: pointer;
+  font: 600 13px var(--sans); color: var(--muted); transition: .15s var(--ease); }
+.set-tab:hover { color: var(--ink); background: var(--surface-2); }
+.set-tab.active { color: var(--ink); background: var(--surface-1); border-color: var(--hair); }
+.set-tab svg { width: 15px; height: 15px; }
+.set-tab .avatar { width: 20px; height: 20px; font-size: 10px; }
+
+/* One group's fields, in as many columns as the width allows. */
 .set-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
-  gap: 12px; align-items: start; padding-bottom: 4px; }
+  gap: 12px; align-items: start; flex: none; }
+.set-card .set-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 0 22px; }
 .set-card { padding: 16px 18px; }
 .set-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
 .set-head h3 { margin: 0; font-size: 16px; }

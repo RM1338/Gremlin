@@ -76,6 +76,16 @@ FIELDS: tuple[Field, ...] = (
     Field("LOCAL_MODEL", "vision", "Local model",
           "Model name as the server knows it, e.g. qwen3-vl:4b",
           depends_on=("LLM_PROVIDER", "local")),
+    Field("GEMINI_MODEL", "vision", "Gemini model",
+          "Gemini is both the provider and the model. 2.5-flash-lite is the one "
+          "with broadly-granted free-tier quota; other flash models often show a "
+          "limit-0 free quota depending on project and region.",
+          default="gemini-2.5-flash-lite", depends_on=("LLM_PROVIDER", "gemini")),
+    Field("GROQ_MODEL", "vision", "Groq model",
+          "Groq is an inference provider, not a model — it serves open weights, "
+          "so the model is named separately. Groq retires hosted models without "
+          "notice; list what it currently serves with GET /openai/v1/models.",
+          default="qwen/qwen3.6-27b", depends_on=("LLM_PROVIDER", "groq")),
     Field("GEMINI_API_KEY", "vision", "Gemini API key",
           "Stored in .env on this machine. Never sent anywhere but Google.",
           kind="secret", depends_on=("LLM_PROVIDER", "gemini")),
@@ -109,7 +119,10 @@ FIELDS: tuple[Field, ...] = (
 
 GROUPS = (
     ("remediation", "Autofix", "Who writes the patch when you run Tier 2."),
-    ("vision", "Vision model", "Who decides what to tap next."),
+    ("vision", "Vision model",
+     "Who decides what to tap next. The backend is the PROVIDER — Groq serves "
+     "open weights on its own hardware, Gemini is both provider and model, and "
+     "`local` is any OpenAI-compatible server. The model is named separately."),
     ("app", "App under test", "Where Gremlin looks, and what it assumes it found."),
     ("run", "Run defaults", "What a run does when you press Start."),
 )
