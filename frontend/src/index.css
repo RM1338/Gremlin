@@ -372,8 +372,7 @@ button { font-family: inherit; }
 
 .stat-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-bottom: 10px; flex: none; }
 @media (max-width: 1000px){ .stat-grid { grid-template-columns: repeat(2,1fr); } }
-.stat { background: var(--surface-1); border: 1px solid var(--hair); border-radius: var(--r-lg); padding: 11px 14px; position: relative; overflow: hidden; transition: transform .2s var(--ease-out), border-color .2s; }
-.stat:hover { transform: translateY(-3px); border-color: color-mix(in srgb, var(--brand) 34%, var(--hair)); }
+.stat { background: var(--surface-1); border: 1px solid var(--hair); border-radius: var(--r-lg); padding: 11px 14px; position: relative; overflow: hidden; }
 .stat .k { font: 600 11px var(--mono); letter-spacing: .1em; text-transform: uppercase; color: var(--muted); display: flex; align-items: center; gap: 7px; }
 .stat .k svg { width: 14px; height: 14px; color: var(--brand); }
 .stat .v { font-size: 40px; font-weight: 700; letter-spacing: -.03em; margin-top: 10px; font-variant-numeric: tabular-nums; line-height: 1; }
@@ -382,8 +381,11 @@ button { font-family: inherit; }
 /* align-items:start, so a card is as tall as what is in it. Stretching them to
    the pane left "The loop" and "Latest run" as mostly empty boxes running to
    the bottom of the page. */
-.grid-2 { display: grid; grid-template-columns: 1.5fr 1fr 1fr; gap: 10px; flex: none;
-  align-items: start; align-content: start; }
+/* Items stretch (the grid default), but the CONTAINER does not grow — flex:none
+   means the row is exactly as tall as its tallest card, and every card matches
+   it. align-items:start gave three different heights; flex:1 with stretch was
+   the original bug, where they all ran to the bottom of the page. */
+.grid-2 { display: grid; grid-template-columns: 1.5fr 1fr 1fr; gap: 10px; flex: none; }
 .grid-2 > * { min-height: 0; }
 @media (max-width: 1180px){ .grid-2 { grid-template-columns: 1.4fr 1fr; } }
 
@@ -400,8 +402,10 @@ button { font-family: inherit; }
 .ov-strip { display: flex; gap: 10px; flex: 1; min-height: 0; overflow: hidden; margin-top: 10px; }
 .ov-shot { height: 100%; aspect-ratio: 1080/2340; flex: none; border-radius: 10px; overflow: hidden;
   background: #05070a; border: 1px solid var(--hair); cursor: zoom-in;
-  transition: border-color .15s, transform .15s var(--ease-out); }
-.ov-shot:hover { border-color: var(--brand); transform: translateY(-3px); }
+  transition: border-color .15s; }
+/* The frames are clickable so they keep a cue, but it is a border change, not
+   a lift — the panels around them do not move under the pointer. */
+.ov-shot:hover { border-color: var(--brand); }
 .ov-shot img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
 /* Short screens: tighten chrome, not content. Now that the cards size to what
