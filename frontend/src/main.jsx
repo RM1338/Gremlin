@@ -19,6 +19,7 @@ import Trace from "./pages/Trace.jsx";
 import Bugs from "./pages/Bugs.jsx";
 import Benchmark from "./pages/Benchmark.jsx";
 import Setup from "./pages/Setup.jsx";
+import Settings from "./pages/Settings.jsx";
 import { isAuthed } from "./lib/auth.js";
 
 function Protected({ children }) {
@@ -45,6 +46,7 @@ const router = createBrowserRouter([
       { path: "bugs", element: <Bugs /> },
       { path: "benchmark", element: <Benchmark /> },
       { path: "setup", element: <Setup /> },
+      { path: "settings", element: <Settings /> },
     ],
   },
   { path: "*", element: <Navigate to="/" replace /> },

@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import Logo from "../lib/Logo.jsx";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { Home, Live, List, Bug, Bars, Bolt, Stop, LogOut, Chevron, Check, Screens, Book } from "../lib/icons.jsx";
+import { Home, Live, List, Bug, Bars, Bolt, Stop, LogOut, Chevron, Check, Screens, Book, Wrench } from "../lib/icons.jsx";
 import { useStore } from "../lib/useStore.js";
 import { loadState, connectWS, startRun, stopRun, loadTargets, selectTarget,
   loadDevices, selectDevice, startEmulator, stopEmulator } from "../lib/store.js";
 import { getUser, signOut, initials } from "../lib/auth.js";
 import { formatDuration } from "../lib/notify.js";
 
-const TITLES = { "/app": "Overview", "/app/live": "Live run", "/app/trace": "Trace", "/app/bugs": "Bugs", "/app/benchmark": "Benchmark", "/app/setup": "Setup" };
+const TITLES = { "/app": "Overview", "/app/live": "Live run", "/app/trace": "Trace", "/app/bugs": "Bugs", "/app/benchmark": "Benchmark", "/app/setup": "Setup", "/app/settings": "Settings" };
 
 export default function Console() {
   const st = useStore();
@@ -73,6 +73,8 @@ export default function Console() {
         {link("/app/bugs", <Bug />, "Bugs", <span className="count">{bugs}</span>)}
         <div className="nav-label">Evidence</div>
         {link("/app/benchmark", <Bars />, "Benchmark")}
+        <div className="nav-label">Configure</div>
+        {link("/app/settings", <Wrench />, "Settings")}
         <div className="nav-label">Help</div>
         {link("/app/setup", <Book />, "Setup")}
 

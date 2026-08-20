@@ -34,6 +34,7 @@ const ROUTES = [
   ["trace", "/app/trace"],
   ["bugs", "/app/bugs"],
   ["benchmark", "/app/benchmark"],
+  ["settings", "/app/settings"],
   ["setup", "/app/setup"],
 ];
 

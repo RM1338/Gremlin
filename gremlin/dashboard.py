@@ -31,7 +31,7 @@ from .config import Config, PROJECTS_ROOT
 from .device import Device
 from .explorer import Explorer
 from .targets import all_targets
-from . import emulator, platforms
+from . import emulator, platforms, settings
 
 # The React console, built with `cd frontend && npm run build`.
 _DIST = Path(__file__).parent.parent / "frontend" / "dist"
@@ -167,6 +167,55 @@ async def start(request: Request) -> dict:
     _start_run()
     return {"started": True, "package": _cfg.package, "activity": _cfg.activity,
             "platform": _cfg.platform}
+
+
+@app.get("/api/settings")
+async def api_settings() -> JSONResponse:
+    """Current runtime settings, plus what is actually installed on this box."""
+    return JSONResponse(settings.read())
+
+
+@app.post("/api/settings")
+async def api_settings_save(request: Request) -> JSONResponse:
+    """Persist a settings patch to .env, to this process, and to the live Config.
+
+    Refused while a run is in flight: the explorer holds this Config object, so
+    editing the step budget or the policy underneath it would change the rules
+    of a run already in progress.
+    """
+    if _run_started:
+        return JSONResponse(
+            {"error": "a run is in progress — stop it before changing settings"},
+            status_code=409)
+    try:
+        patch = await request.json()
+    except Exception:
+        return JSONResponse({"error": "expected a JSON object"}, status_code=400)
+    if not isinstance(patch, dict):
+        return JSONResponse({"error": "expected a JSON object"}, status_code=400)
+
+    # A secret sent back as the empty string means "leave it alone", not "clear
+    # it" — the UI never receives the value, so it cannot echo it back.
+    patch = {k: ("" if v is None else str(v)) for k, v in patch.items()}
+    secret_keys = {f.key for f in settings.FIELDS if f.kind == "secret"}
+    patch = {k: v for k, v in patch.items() if v != "" or k not in secret_keys}
+
+    problems = settings.validate(patch)
+    if problems:
+        return JSONResponse({"error": problems[0], "problems": problems}, status_code=400)
+
+    settings.write(patch)
+
+    # Fields marked `applied` live on the Config the next run will use.
+    if "GREMLIN_MAX_STEPS" in patch and patch["GREMLIN_MAX_STEPS"].isdigit():
+        _cfg.max_steps = int(patch["GREMLIN_MAX_STEPS"])
+    if "GREMLIN_POLICY" in patch:
+        _cfg.policy = patch["GREMLIN_POLICY"]
+    if "GREMLIN_PLATFORM" in patch:
+        # Empty means "go back to detecting it", which is the default behaviour.
+        _cfg.platform = patch["GREMLIN_PLATFORM"] or platforms.DEFAULT.name
+
+    return JSONResponse(settings.read())
 
 
 @app.post("/api/stop")

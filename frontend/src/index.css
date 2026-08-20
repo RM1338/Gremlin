@@ -730,6 +730,51 @@ button { font-family: inherit; }
 .setup-done { display: flex; align-items: center; gap: 18px; padding: 18px 20px; border-radius: var(--r-lg);
   border: 1px solid color-mix(in srgb, var(--brand) 26%, var(--hair)); background: color-mix(in srgb, var(--brand) 6%, var(--surface-1)); }
 
+/* ---- Settings --------------------------------------------------------------
+   Two columns of cards, a sticky action bar at the foot. This is the one console
+   page with a save button, so the bar never scrolls away from you. */
+.set-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+  gap: 12px; align-items: start; padding-bottom: 4px; }
+.set-card { padding: 16px 18px; }
+.set-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+.set-head h3 { margin: 0; font-size: 16px; }
+.set-head svg { width: 17px; height: 17px; color: var(--brand); }
+.set-head .avatar { width: 24px; height: 24px; font-size: 11px; }
+.set-lede { margin: 0 0 14px; font-size: 12.5px; }
+
+.set-field { display: block; margin-bottom: 14px; }
+.set-label { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 13px; margin-bottom: 6px; }
+.set-input { width: 100%; padding: 9px 12px; border-radius: var(--r-md); border: 1px solid var(--hair);
+  background: var(--surface-2); color: var(--ink); font: 13px var(--mono); }
+.set-input:focus { outline: none; border-color: var(--brand); background: var(--surface-1); }
+select.set-input { font-family: var(--sans); }
+.set-help { display: block; margin-top: 6px; font-size: 12px; line-height: 1.55; color: var(--muted); }
+.set-tag { font: 600 9px var(--mono); letter-spacing: .08em; text-transform: uppercase;
+  color: var(--layout); border: 1px solid color-mix(in srgb, var(--layout) 40%, var(--hair));
+  border-radius: 5px; padding: 1px 5px; }
+
+/* What is installed on this machine, stated before you pick. */
+.set-caps { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 14px; }
+.set-cap { display: inline-flex; align-items: center; gap: 6px; font: 600 11.5px var(--mono);
+  padding: 3px 9px; border-radius: 999px; border: 1px solid var(--hair); background: var(--surface-2); }
+.set-cap svg { width: 12px; height: 12px; }
+.set-cap.ok { color: var(--ink); border-color: color-mix(in srgb, var(--brand) 34%, var(--hair)); }
+.set-cap.no { color: var(--faint); }
+.set-cap .set-x { font-size: 11px; }
+.set-probe { display: flex; align-items: center; gap: 8px; font: 12px var(--mono);
+  padding: 8px 11px; border-radius: var(--r-md); margin-bottom: 14px; }
+.set-probe svg { width: 13px; height: 13px; }
+.set-probe.ok { color: var(--ink-dim); background: color-mix(in srgb, var(--brand) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--brand) 26%, var(--hair)); }
+.set-probe.bad { color: var(--crash); background: color-mix(in srgb, var(--crash) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--crash) 30%, var(--hair)); }
+
+.set-bar { flex: none; display: flex; align-items: center; gap: 14px; justify-content: flex-end;
+  padding-top: 12px; margin-top: 12px; border-top: 1px solid var(--hair); }
+.set-hint { font: 12px var(--mono); color: var(--muted); }
+.set-msg { margin-right: auto; font-size: 13px; font-weight: 600; color: var(--brand); }
+.set-msg.bad { color: var(--crash); }
+
 /* Toast + completion banner */
 .toast { position: fixed; bottom: 24px; right: 24px; z-index: 50; background: var(--surface-2); border: 1px solid var(--hair); border-radius: var(--r-md); padding: 12px 16px; box-shadow: var(--shadow-lg); display: flex; align-items: center; gap: 10px; font-size: 13px; animation: toastin .3s var(--ease-out); max-width: 340px; }
 .toast svg { width: 16px; height: 16px; flex: none; color: var(--brand); }
