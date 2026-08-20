@@ -16,9 +16,11 @@ const GATES = [
 export default function Bugs() {
   const st = useStore();
   const bugs = st.trace?.bugs || [];
-  // One collapsed bug card plus its gap. Expanding a tier grows the card, so
-  // the card itself caps what it shows rather than pushing the page.
-  const pg = usePaged(bugs, 168);
+  // One bug card plus its gap, measured on real reports rather than guessed:
+  // 350-390px, because a card carries a screenshot, the matched log line and
+  // the repro steps. 168 was optimistic and put three on a page with room for
+  // one, which is why every card came out with its content cut.
+  const pg = usePaged(bugs, 400);
 
   return (
     <>

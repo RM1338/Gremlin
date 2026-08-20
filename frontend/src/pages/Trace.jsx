@@ -46,7 +46,11 @@ export default function Trace() {
                   <div className="tl-head">
                     <span className="tl-step">STEP {pad3(i + 1)}</span>
                     <span className={"tl-verb " + a.verb}>{a.verb}</span>
-                    {a.target_label && <span className="tl-screen">{a.target_label}</span>}
+                    {/* This is the CONTROL the step acted on, not the screen it
+                        was on — styled as a screen name it read as a caption for
+                        the frame beside it, which is a frame of the screen the
+                        control lives on. Different things. */}
+                    {a.target_label && <span className="tl-target-chip">→ {a.target_label}</span>}
                   </div>
                   <div className="tl-reason">{a.reason || "—"}</div>
                   {a.text && <div className="tl-target">typed <b>"{a.text}"</b></div>}

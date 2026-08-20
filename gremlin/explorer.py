@@ -147,7 +147,10 @@ class Explorer:
         # Stay on target before observing, so foreign screens are never counted
         # or explored: a tap may have opened a system media/file picker, a
         # permission dialog, a share sheet, or pulled another app forward.
-        self._ensure_on_app()
+        # Backing out of the app's own root is how we leave it, and that only
+        # happens once a branch is exhausted. Re-entering therefore says the
+        # exploration is finished, not that it is starting again.
+        left_app = self._ensure_on_app()
 
         # ---- Observe ----
         shot = self.dev.screenshot()
@@ -194,7 +197,15 @@ class Explorer:
 
         # Frontier bookkeeping: how much of this screen is covered, and whether
         # there is anything left to tap anywhere (for the coverage-complete stop).
-        self._no_frontier_streak = 0 if untapped else self._no_frontier_streak + 1
+        # The frontier streak is what stops the run. Re-entering the app after
+        # backing out of it keeps counting: the loop used to reset here, land on
+        # a home screen with something still untapped, tap it, exhaust it, back
+        # out of the app again — and never reach the stop. Which is exactly the
+        # exit-and-reopen cycle it got stuck in.
+        if untapped and not left_app:
+            self._no_frontier_streak = 0
+        else:
+            self._no_frontier_streak += 1
         self._last_phash = h
 
         self._emit(
@@ -225,8 +236,11 @@ class Explorer:
             self._done = True
             self._complete = True
 
-    def _ensure_on_app(self) -> None:
+    def _ensure_on_app(self) -> bool:
         """Get back into the app under test before observing.
+
+        Returns True if we had actually LEFT the app and had to come back —
+        which the caller reads as evidence, not just as housekeeping.
 
         A tap can open a system media/file picker, a photo gallery, a permission
         dialog or a share sheet — all *different packages*. We first try to
@@ -235,16 +249,20 @@ class Explorer:
         These recovery actions are deliberately NOT recorded in the trace: they
         are normalization, not exploration.
         """
+        left = False
         for _ in range(3):
             fg = self.dev.foreground_package()
             if fg is None or fg == self.cfg.package:
                 self._reattach_oracle()
-                return
+                return left
+            left = True
             self.dev.back()
             time.sleep(0.6)
         if self.dev.foreground_package() not in (None, self.cfg.package):
             self.dev.relaunch(self.cfg.package, self.cfg.activity)
+            left = True
         self._reattach_oracle()
+        return left
 
     def _reattach_oracle(self) -> None:
         """Keep the oracle watching the process that is actually running.
