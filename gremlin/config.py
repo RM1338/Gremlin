@@ -81,5 +81,29 @@ class Config:
     run_dir: Path = field(default_factory=lambda: Path("runs/latest"))
 
     def ensure_dirs(self) -> None:
-        (self.run_dir / "screens").mkdir(parents=True, exist_ok=True)
-        (self.run_dir / "reports").mkdir(parents=True, exist_ok=True)
+        """Make this run's directory, and empty it of the LAST run's artifacts.
+
+        `runs/latest` is reused by every run and nothing ever cleared it, so a
+        short run inherited a long one's screenshots. The console then zipped
+        step N of this trace against a frame from a different run — and, once
+        the machine changed, a different device: 360x760 placeholders written by
+        scripts/seed_demo_run.py sitting beside 1080x2340 phone captures, with
+        nothing in the filename to tell them apart.
+
+        Only the files a run writes are removed, by pattern. Anything else
+        parked in here is left alone, and eval.json in particular survives — the
+        benchmark writes that, and it is evidence from a different exercise.
+        """
+        screens = self.run_dir / "screens"
+        reports = self.run_dir / "reports"
+        screens.mkdir(parents=True, exist_ok=True)
+        reports.mkdir(parents=True, exist_ok=True)
+        for pattern in ("step_*.png", "bug_*.png"):
+            for stale in screens.glob(pattern):
+                stale.unlink()
+        for pattern in ("bug_*.md", "bug_*.json"):
+            for stale in reports.glob(pattern):
+                stale.unlink()
+        stale_trace = self.run_dir / "trace.json"
+        if stale_trace.exists():
+            stale_trace.unlink()

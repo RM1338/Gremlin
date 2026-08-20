@@ -6,7 +6,11 @@ import { useStore } from "../lib/useStore.js";
 export default function Trace() {
   const st = useStore();
   const trace = st.trace?.trace || [];
-  const stepShots = (st.screens || []).filter((n) => n.startsWith("step_")).sort();
+  // A step's frame is named after the step, so ask for it by name rather than
+  // by position in a sorted list. Zipping trace[i] against shots[i] meant one
+  // stray file — a leftover from a longer previous run — shifted every frame
+  // after it onto the wrong step.
+  const shots = new Set(st.screens || []);
   // The trace is the one pane that scrolls: it is the run's log, and paging a
   // log breaks the thing it is for — following a path from start to end.
   const [zoom, setZoom] = useState(null);
@@ -27,7 +31,8 @@ export default function Trace() {
       ) : (
         <div className="timeline">
           {trace.map((a, i) => {
-            const shot = stepShots[i];
+            const name = `step_${pad3(i + 1)}.png`;
+            const shot = shots.has(name) ? name : null;
             return (
             <div className="tl-item" key={i}>
               <div className={"node" + (a.target_label ? " new" : "")} />
