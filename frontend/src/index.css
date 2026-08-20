@@ -618,7 +618,11 @@ button { font-family: inherit; }
    at both ends; this starts and stops exactly on a dot. */
 .tl-item::before { content: ""; position: absolute; left: -20px; top: 11px; bottom: -11px;
   width: 2px; background: var(--hair); }
-.tl-item:last-child::before { display: none; }
+/* The last item keeps a short tail that fades out, rather than no rail at all.
+   Hiding it entirely meant a one-step trace — which is what an early-ended run
+   leaves behind — drew a lone dot and no timeline. */
+.tl-item:last-child::before { bottom: auto; height: 26px;
+  background: linear-gradient(var(--hair), transparent); }
 .tl-item .node { position: absolute; left: -28px; top: 2px; width: 18px; height: 18px;
   border-radius: 50%; background: var(--surface-1); border: 2px solid var(--brand); }
 /* Filled vs hollow is the whole distinction. The glow this used to carry was a
