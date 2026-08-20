@@ -1,4 +1,6 @@
 import { useEffect, useRef } from "react";
+import Mascot from "../lib/Mascot.jsx";
+import { mascotState, mascotLine } from "../lib/mascotState.js";
 import { useNavigate } from "react-router-dom";
 import { Bolt, Check, Screens, Steps, Bug, Clock } from "../lib/icons.jsx";
 import { pad3, sevClass } from "../lib/ui.jsx";
@@ -13,9 +15,12 @@ export default function Live() {
 
   return (
     <>
-      <div className="page-head">
-        <h1 className="page-title">Live run</h1>
-        <p className="page-desc">Watch the agent think in real time — the device on the left, its intention and the observe→decide→act→check stream on the right.</p>
+      <div className="page-head" style={{ display: "flex", alignItems: "center", gap: 18 }}>
+        <Mascot size={72} state={mascotState(st)} />
+        <div style={{ flex: 1 }}>
+          <h1 className="page-title">Live run</h1>
+          <p className="page-desc">{mascotLine(mascotState(st), st.live.bugs.length)}</p>
+        </div>
       </div>
 
       {st.done && st.summary && <Summary s={st.summary} />}

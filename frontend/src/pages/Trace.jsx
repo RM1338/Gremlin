@@ -16,7 +16,7 @@ export default function Trace() {
 
       {trace.length === 0 ? (
         <div className="empty-state">
-          <div className="icon"><Mascot size={80} float={false} /></div>
+          <div className="icon"><Mascot size={80} state="idle" /></div>
           <h3>No trace yet</h3><p>Start a run to record the agent's path.</p>
         </div>
       ) : (

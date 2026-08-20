@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <!-- Gremlin mark. The first attempt packed the dots edge to edge and read as
+       one dense blob; this one uses smaller circles, real gaps between them and
+       a generous margin, so the negative space does the describing. Two ears
+       above a ring of dots, amber eyes on the face plate. -->
+  <rect width="512" height="512" fill="#F5F1E8"/>
+  <g fill="#2A554D">
+    <rect x="150" y="118" width="60" height="60" rx="15"/>
+    <rect x="302" y="118" width="60" height="60" rx="15"/>
+  </g>
+  <g fill="#35695F">
+    <circle cx="196" cy="238" r="33"/>
+    <circle cx="316" cy="238" r="33"/>
+    <circle cx="150" cy="312" r="33"/>
+    <circle cx="362" cy="312" r="33"/>
+    <circle cx="200" cy="384" r="33"/>
+    <circle cx="312" cy="384" r="33"/>
+  </g>
+  <rect x="219" y="278" width="74" height="74" rx="20" fill="#2A554D"/>
+  <circle cx="238" cy="308" r="15" fill="#F2B44A"/>
+  <circle cx="274" cy="308" r="15" fill="#F2B44A"/>
+</svg>

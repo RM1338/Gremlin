@@ -32,6 +32,29 @@ const set = (patch) => { state = { ...state, ...patch }; listeners.forEach((l) =
 export function subscribe(cb) { listeners.add(cb); return () => listeners.delete(cb); }
 export function getSnapshot() { return state; }
 
+// `eval.json` has had two shapes: a bare array of rows, and — since the
+// benchmark grew per-target output directories — `{results: [...]}`. Accept
+// both, so a run directory written by either version still renders.
+export function evalRows(raw) {
+  if (!raw) return null;
+  const rows = Array.isArray(raw) ? raw : raw.results;
+  return Array.isArray(rows) && rows.length ? rows : null;
+}
+
+// Arms by role. The vision arm was simply "gremlin" before the no-model
+// ablation existed, so both names resolve to it.
+export function evalArms(raw) {
+  const rows = evalRows(raw);
+  if (!rows) return null;
+  const by = (n) => rows.find((e) => e.explorer === n) || null;
+  return {
+    rows,
+    vision: by("gremlin-vision") || by("gremlin"),
+    coverage: by("gremlin-coverage"),
+    monkey: by("monkey"),
+  };
+}
+
 export async function loadState() {
   try {
     const r = await fetch("/api/state");

@@ -1,115 +1,265 @@
 import { Link } from "react-router-dom";
 import Mascot from "../lib/Mascot.jsx";
-import { Bolt, Eye, Brain, Bug, Route, Bars, Check } from "../lib/icons.jsx";
+import NibScene from "../lib/NibScene.jsx";
+import { SiteNav, SiteFooter, DotField, FaqList, USE_CASES } from "../lib/SiteChrome.jsx";
+import { Bolt, Eye, Bug, Route, Bars, Check, Brain, Clock, Doc } from "../lib/icons.jsx";
 import { isAuthed } from "../lib/auth.js";
 
+/* The page is built around the one idea the product actually rests on: the
+ * model decides where to go, the log decides what is broken.
+ *
+ * Nothing here claims a number that has not been measured. The benchmark
+ * section describes the experiment and says plainly that the result is pending,
+ * because a landing page asserting "10x more screens" before the ablation has
+ * run is the fastest way to lose a reader who checks.
+ */
+
+const STACK = ["Flutter", "React Native", "Android", "adb + logcat", "Local models", "Real devices", "Emulators"];
+
+const MODES = [
+  {
+    // the two halves get two different characters: an adventurer scouting ground
+    // nobody has mapped, and the detective reading back what it proved.
+    state: "explorer",
+    tag: "The policy",
+    h: "It explores like a curious user",
+    p: "A vision model reads the screen and picks the next tap, type, scroll or back — grounded on the accessibility tree, not guessed pixel coordinates. It tracks every control it has already tried and deliberately heads for the ones it hasn't, so it never loops on one button.",
+  },
+  {
+    state: "trace",
+    tag: "The oracle",
+    h: "The log decides what broke",
+    p: "Detection never asks a model whether a screen looks wrong — that question has no checkable answer. It matches the framework's own words in logcat: a RenderFlex overflow, an unhandled exception, a native crash. Either the string is there or it isn't.",
+  },
+];
+
+const CARDS = [
+  { ic: <Route />, h: "Traces that replay", p: "Each failure carries the exact action trace from launch, and the replayer re-runs it with no model in the loop. A repro you can hand to someone else." },
+  { ic: <Doc />, h: "Reports you can check", p: "Every finding cites the log line that produced it, with source file and line. Nothing is inferred, so there is nothing to take on trust." },
+  { ic: <Check />, h: "Fixes that must earn it", p: "A model-authored patch passes only if the signal is gone, the screen still looks like itself, and nothing new broke. Otherwise it is reverted." },
+];
+
 const FEATURES = [
-  { ic: <Eye />, h: "Sees like a user", p: "A vision model reads each screen from a real screenshot and picks the next tap, type, scroll or back — grounded on the accessibility tree, not brittle coordinates." },
-  { ic: <Brain />, h: "Reasons about coverage", p: "It remembers where it has been and deliberately heads for sections it hasn't visited, reaching 10× more screens than a random monkey." },
-  { ic: <Bug />, h: "Catches real crashes", p: "A logcat oracle scoped to the app pid flags native crashes, Dart exceptions, layout overflows and jank — with the exact file:line." },
-  { ic: <Route />, h: "Every bug is reproducible", p: "Each failure ships with the full action trace from launch, so the replayer re-runs the exact path that broke it." },
-  { ic: <Bars />, h: "Benchmarked, not hand-waved", p: "Head-to-head against adb monkey on equal budget — the coverage gap is measured, not claimed." },
-  { ic: <Bolt />, h: "Free to run", p: "The exploration policy runs on Gemini's free tier, so a full 40-step scan costs you nothing." },
+  { ic: <Eye />, h: "Grounded in the real tree", p: "Taps land on actual elements with real labels and centres, so a renamed widget doesn't break the run the way it breaks a script." },
+  { ic: <Bug />, h: "Findings you can check", p: "Every report cites the log line that produced it, with the source file and line." },
+  { ic: <Bars />, h: "Measured against a baseline", p: "The same action budget as Android's own Monkey, and against Gremlin with the model removed — so the model's contribution is a number, not a claim." },
+  { ic: <Brain />, h: "Your model, your hardware", p: "The policy speaks the OpenAI chat-completions shape, so a local model or a hosted one is a config change." },
+  { ic: <Clock />, h: "Runs on a budget", p: "Give it an action count and a wall clock. It spends both on the screens it has not seen." },
+  { ic: <Bolt />, h: "Three-tier remediation", p: "Report, deterministic retry, then a model-authored fix behind guard, rebuild and replay gates." },
 ];
 
 const STEPS = [
-  { n: "01", h: "Observe", p: "Screenshot + a11y element tree" },
-  { n: "02", h: "Decide", p: "Vision model picks one verb" },
-  { n: "03", h: "Act", p: "tap · type · scroll · back" },
-  { n: "04", h: "Check", p: "Oracle drains scoped logcat" },
+  { n: "01", h: "Point it at a build", p: "An APK or a device already running your app. No instrumentation, no test IDs to add." },
+  { n: "02", h: "Give it a budget", p: "An action count and a time limit. Pick a model, local or hosted." },
+  { n: "03", h: "Read the trace", p: "Findings arrive with the log line that proved them and a path that replays them." },
+];
+
+const SECURITY = [
+  ["Screenshots never have to leave the building", "Point the provider at a local model and every frame stays on your hardware."],
+  ["No training on your runs", "Artifacts stay in your own runs directory. Nothing is uploaded to train anything."],
+  ["Short-lived, repo-scoped tokens", "Tier-2 fixes use credentials you enter when prompted, scoped to the one repo."],
+  ["Everything is reproducible", "Each run is a directory of frames, traces and logs you can re-read without the tool."],
 ];
 
 export default function Landing() {
   const authed = isAuthed();
   return (
     <div className="site">
-      <nav className="site-nav">
-        <div className="brand"><Mascot size={30} float={false} /> Gremlin<span className="dot">.</span></div>
-        <div className="links">
-          <a href="#features">Features</a>
-          <a href="#how">How it works</a>
-          <a href="#proof">Benchmark</a>
-        </div>
-        <div className="spacer" />
-        {authed
-          ? <Link className="btn btn-primary" to="/app"><Bolt /> Open console</Link>
-          : <><Link className="btn btn-ghost" to="/signin">Sign in</Link><Link className="btn btn-primary" to="/signup">Get started</Link></>}
-      </nav>
+      <SiteNav />
 
       <header className="hero-x">
-        <div className="mesh" /><div className="grid" />
+        <DotField />
         <div className="inner">
-          <div className="hero-mascot-x"><Mascot size={128} /></div>
-          <div className="eyebrow" style={{ justifyContent: "center", display: "flex" }}><Bolt /> Autonomous UI-testing agent</div>
-          <h1>Ship apps that <em>don't break</em> in the wild.</h1>
-          <p>Gremlin is an AI agent that drives your real Android app like a curious user — exploring every screen,
-            catching the crashes your tests miss, and handing you a reproducible trace for each one.</p>
+          <div className="eyebrow"><Bolt /> Autonomous UI testing for Flutter and React Native</div>
+          <h1>It breaks your app <em>on purpose.</em></h1>
+          <p>
+            Gremlin drives a real Android device like a curious user &mdash; exploring every screen it
+            can reach, and filing a reproducible report the moment the framework admits something
+            went wrong.
+          </p>
           <div className="cta">
-            <Link className="btn btn-primary btn-lg" to={authed ? "/app" : "/signup"}><Bolt /> {authed ? "Open the console" : "Start free"}</Link>
-            <a className="btn btn-ghost btn-lg" href="#how">See how it works</a>
+            <Link className="btn btn-primary btn-lg" to={authed ? "/app" : "/signup"}>
+              <Bolt /> Start free
+            </Link>
+            <Link className="btn btn-ghost btn-lg" to="/use-cases">See use cases &rarr;</Link>
           </div>
         </div>
+
         <div className="hero-preview">
-          <div className="bar"><i /><i /><i /></div>
-          <img src="/preview.png" alt="Gremlin console preview"
-            onError={(e) => { e.currentTarget.parentElement.style.display = "none"; }} />
+          <div className="bar"><i /><i /><i /><span>gremlin &mdash; run 0184 &middot; com.example.shop</span></div>
+          <div className="shot">
+            <div className="shot-side">
+              {["Overview", "Live", "Trace", "Bugs", "Benchmark"].map((r, i) => (
+                <span key={r} className={i === 2 ? "on" : ""}>{r}</span>
+              ))}
+            </div>
+            <div className="shot-main">
+              <div className="shot-row"><b>step 19</b> tap &middot; Checkout &middot; (540, 1284)</div>
+              <div className="shot-row bad"><b>RenderFlex overflowed</b> by 42 px &middot; cart_summary.dart:118</div>
+              <div className="shot-row"><b>step 20</b> back</div>
+              <div className="shot-row"><b>step 21</b> tap &middot; Promo code</div>
+              <div className="shot-bars">
+                {[38, 62, 44, 81, 55, 70, 33, 58, 76, 41, 66, 49].map((h, i) => (
+                  <i key={i} style={{ height: h + "%" }} />
+                ))}
+              </div>
+            </div>
+          </div>
         </div>
       </header>
 
-      <section className="section" id="features">
-        <h2 className="section-title">Testing that thinks</h2>
-        <p className="section-lede">Random tap-fuzzers pound the first screen and call it a day. Gremlin reasons about where to go next.</p>
+      <section className="strip">
+        <p>Works with the stack your app already ships on</p>
+        <div className="strip-row">{STACK.map((s) => <span key={s}>{s}</span>)}</div>
+      </section>
+
+      {/* the companion section — Nib's only appearance, and the only animation */}
+      <section className="section meet" id="nib">
+        <div className="meet-copy">
+          <div className="eyebrow">Meet Nib</div>
+          <h2>Someone has to go looking for them</h2>
+          <p>
+            Nib is the character on the front of a very literal program. It walks into your app
+            with no map, tries the controls a person would try, and gets rid of every defect it
+            can provoke &mdash; one at a time, each with the receipt that proves it was there.
+          </p>
+          <p className="fine">
+            Two modes, because the product has two halves: the policy that decides where to go,
+            and the oracle that decides what broke.
+          </p>
+          <Link className="btn btn-ghost" to="/about">The thinking behind it &rarr;</Link>
+        </div>
+        <NibScene />
+      </section>
+
+      <section className="section" id="modes">
+        <h2 className="section-title">One agent, two jobs</h2>
+        <p className="section-lede">
+          Most AI testing tools ask a model &ldquo;does this look broken?&rdquo; &mdash; a question with no
+          checkable answer, which is why they hallucinate defects. Gremlin splits the work in two
+          and only lets the model do the half where being wrong is cheap.
+        </p>
+        <div className="modes">
+          {MODES.map((m) => (
+            <article className="mode" key={m.tag}>
+              <div className="mode-face"><Mascot size={104} state={m.state} bugs={false} /></div>
+              <span className="pill brand">{m.tag}</span>
+              <h3>{m.h}</h3>
+              <p>{m.p}</p>
+            </article>
+          ))}
+        </div>
+        <p className="split-line">
+          The model decides <em>where to go</em>. The log decides <em>what is broken</em>.
+        </p>
+      </section>
+
+      <section className="section">
+        <h2 className="section-title">What comes out of a run</h2>
+        <p className="section-lede">Three things, each one checkable without trusting the tool.</p>
         <div className="features">
-          {FEATURES.map((f) => (
-            <div className="feature" key={f.h}>
-              <div className="ic">{f.ic}</div>
-              <h3>{f.h}</h3><p>{f.p}</p>
-            </div>
+          {CARDS.map((c) => (
+            <article className="feature" key={c.h}>
+              <div className="ic">{c.ic}</div>
+              <h3>{c.h}</h3>
+              <p>{c.p}</p>
+            </article>
           ))}
         </div>
       </section>
 
-      <section className="section" id="how">
-        <h2 className="section-title">One closed loop</h2>
-        <p className="section-lede">Observe → decide → act → check, repeated until the budget runs out. The model only decides where to go; a deterministic oracle decides what broke.</p>
-        <div className="steps-row">
-          {STEPS.map((st) => (
-            <div className="step-card" key={st.n}><div className="n">{st.n}</div><h4>{st.h}</h4><p>{st.p}</p></div>
+      <section className="section" id="uses">
+        <h2 className="section-title">What teams point it at</h2>
+        <p className="section-lede">Six jobs it already does, all of them the same loop underneath.</p>
+        <div className="usegrid">
+          {USE_CASES.map((u) => (
+            <Link className="usecard" key={u.slug} to={"/use-cases#" + u.slug}>
+              <h3>{u.h}</h3>
+              <p>{u.p}</p>
+              <span className="see">See how &rarr;</span>
+            </Link>
+          ))}
+        </div>
+      </section>
+
+      <section className="section">
+        <h2 className="section-title">Everything else it does</h2>
+        <div className="features">
+          {FEATURES.map((f) => (
+            <article className="feature" key={f.h}>
+              <div className="ic">{f.ic}</div>
+              <h3>{f.h}</h3>
+              <p>{f.p}</p>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section className="section">
+        <h2 className="section-title">Get started in minutes</h2>
+        <p className="section-lede">No test IDs to add, no page objects to write, no scripts to maintain.</p>
+        <div className="steps-row three">
+          {STEPS.map((s) => (
+            <article className="step-card" key={s.n}>
+              <span className="n">{s.n}</span>
+              <h4>{s.h}</h4>
+              <p>{s.p}</p>
+            </article>
           ))}
         </div>
       </section>
 
       <section className="section" id="proof">
-        <div className="card" style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 30, alignItems: "center", padding: 36 }}>
-          <div>
-            <div className="eyebrow"><Bars /> Measured, not claimed</div>
-            <h2 style={{ fontSize: 30, letterSpacing: "-.03em", margin: "6px 0 10px" }}>10× the coverage of a random monkey</h2>
-            <p className="note" style={{ fontSize: 15, maxWidth: "52ch" }}>On an equal 25-action budget against <code>adb shell monkey</code>, Gremlin reached 10 distinct screens to the monkey's 1 — because it plans, and the monkey guesses.</p>
-            <ul style={{ color: "var(--ink-dim)", fontSize: 14, lineHeight: 1.9, marginTop: 14 }}>
-              <li><Check style={{ width: 14, height: 14, color: "var(--brand)", verticalAlign: "-2px" }} /> Scoped logcat — no noise from other apps</li>
-              <li><Check style={{ width: 14, height: 14, color: "var(--brand)", verticalAlign: "-2px" }} /> Perceptual-hash de-dupe of visited screens</li>
-              <li><Check style={{ width: 14, height: 14, color: "var(--brand)", verticalAlign: "-2px" }} /> Anti-loop escape when stuck</li>
-            </ul>
-          </div>
-          <div className="callout" style={{ textAlign: "center" }}>
-            <div className="big">10×</div><div className="lbl">more screens</div>
-          </div>
+        <h2 className="section-title">Measured, not asserted</h2>
+        <p className="section-lede">
+          Three arms, one action budget, the same cold start &mdash; so the model's contribution is a
+          number rather than a claim.
+        </p>
+        <div className="proof-box">
+          <ul>
+            <li><b>Android's Monkey</b> &mdash; random taps, the standard baseline.</li>
+            <li><b>Gremlin without the model</b> &mdash; accessibility grounding and coverage memory only.</li>
+            <li><b>Gremlin</b> &mdash; the full agent.</li>
+          </ul>
+          <p>
+            The second arm is the honest one: it isolates what the vision model actually
+            contributes, rather than crediting it for what the coverage bookkeeping does. Results
+            are pending &mdash; the numbers will be published here once they have been run over enough
+            seeds to report a spread.
+          </p>
         </div>
+      </section>
+
+      <section className="section">
+        <h2 className="section-title">Where your app&rsquo;s screens go</h2>
+        <p className="section-lede">Nowhere, if you don&rsquo;t want them to.</p>
+        <div className="sec-grid">
+          {SECURITY.map(([h, p]) => (
+            <div className="sec-item" key={h}>
+              <Check />
+              <div><b>{h}</b><span>{p}</span></div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="section faq">
+        <h2 className="section-title">Questions</h2>
+        <FaqList />
       </section>
 
       <section className="cta-band">
         <div className="box">
-          <h2>Point it at your app.</h2>
-          <p>Plug in a device, press start, and watch it explore.</p>
-          <Link className="btn btn-primary btn-lg" to={authed ? "/app" : "/signup"}><Bolt /> {authed ? "Open the console" : "Create your account"}</Link>
+          <h2>Point Gremlin at your app</h2>
+          <p>Free while it is in beta. Bring a build and a budget.</p>
+          <div className="cta">
+            <Link className="btn btn-primary btn-lg" to={authed ? "/app" : "/signup"}><Bolt /> Start free</Link>
+            <Link className="btn btn-ghost btn-lg" to="/contact">Talk to us &rarr;</Link>
+          </div>
         </div>
       </section>
 
-      <footer className="site-foot">
-        <Mascot size={24} float={false} /> <b>Gremlin</b>
-        <span className="spacer" />
-        <span>Built for developers · runs locally against your device</span>
-      </footer>
+      <SiteFooter />
     </div>
   );
 }

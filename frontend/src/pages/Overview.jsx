@@ -4,7 +4,8 @@ import Mascot from "../lib/Mascot.jsx";
 import { Bolt, Screens, Steps, Bug } from "../lib/icons.jsx";
 import { CountUp, Spark } from "../lib/ui.jsx";
 import { useStore } from "../lib/useStore.js";
-import { startRun } from "../lib/store.js";
+import { startRun, evalArms } from "../lib/store.js";
+import { mascotState, mascotLine } from "../lib/mascotState.js";
 
 const TYPES = [
   "reaching Settings → Profile → Theme…",
@@ -18,8 +19,8 @@ export default function Overview() {
   const nav = useNavigate();
   const t = st.trace || {};
   const steps = t.steps ?? 0, screens = t.distinct_screens ?? 0, bugs = t.bugs?.length ?? 0;
-  const g = st.evalData?.find((e) => e.explorer === "gremlin");
-  const m = st.evalData?.find((e) => e.explorer === "monkey");
+  const arms = evalArms(st.evalData);
+  const g = arms?.vision, m = arms?.monkey;
   const mult = g && m && m.distinct_screens ? Math.round(g.distinct_screens / m.distinct_screens) : null;
 
   async function start() { try { await startRun(); nav("/app/live"); } catch {} }
@@ -38,14 +39,14 @@ export default function Overview() {
           </div>
           <Terminal />
         </div>
-        <div className="hero-mascot"><Mascot size={190} /></div>
+        <div className="hero-mascot"><Mascot size={190} state={mascotState(st)} float /></div>
       </section>
 
       <div className="stat-grid">
-        <StatTile icon={<Screens />} k="Distinct screens" v={screens} foot={<>vs <b>1</b> for random monkey</>} />
+        <StatTile icon={<Screens />} k="Distinct screens" v={screens} foot={m ? <>vs <b>{m.distinct_screens}</b> for random monkey</> : <>no baseline run yet</>} />
         <StatTile icon={<Steps />} k="Actions taken" v={steps} foot="grounded on a11y elements" />
         <StatTile icon={<Bug />} k="Bugs found" v={bugs} foot={bugs ? "with repro traces" : "clean baseline run"} />
-        <StatTile icon={<Bolt />} k="Coverage lift" v={mult} suffix="×" foot="more screens than monkey" />
+        <StatTile icon={<Bolt />} k="Coverage lift" v={mult} suffix="×" foot="vs the monkey baseline" />
       </div>
 
       <div className="grid-2">

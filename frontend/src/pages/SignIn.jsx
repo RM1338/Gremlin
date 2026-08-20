@@ -1,4 +1,5 @@
 import { useState } from "react";
+import Logo from "../lib/Logo.jsx";
 import { Link, useNavigate } from "react-router-dom";
 import Mascot from "../lib/Mascot.jsx";
 import { signIn } from "../lib/auth.js";
@@ -24,9 +25,9 @@ export default function SignIn() {
     <div className="auth">
       <aside className="auth-aside">
         <div className="grid" />
-        <div className="z"><div className="brand"><Mascot size={34} float={false} /> Gremlin<span style={{ color: "var(--brand)" }}>.</span></div></div>
+        <div className="z"><div className="brand"><Logo size={30} /> Gremlin<span style={{ color: "var(--brand)" }}>.</span></div></div>
         <div className="z">
-          <div style={{ width: 96, marginBottom: 20 }}><Mascot size={96} /></div>
+          <div style={{ width: 96, marginBottom: 20 }}><Mascot size={96} state="idle" float /></div>
           <blockquote>Welcome back. Your <em>gremlin missed you.</em></blockquote>
           <div className="who">Pick up where you left off — open the console and start a run.</div>
         </div>

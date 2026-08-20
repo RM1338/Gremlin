@@ -1,4 +1,5 @@
 import { useState } from "react";
+import Logo from "../lib/Logo.jsx";
 import { Link, useNavigate } from "react-router-dom";
 import Mascot from "../lib/Mascot.jsx";
 import { signUp } from "../lib/auth.js";
@@ -25,9 +26,9 @@ export default function SignUp() {
     <div className="auth">
       <aside className="auth-aside">
         <div className="grid" />
-        <div className="z"><div className="brand"><Mascot size={34} float={false} /> Gremlin<span style={{ color: "var(--brand)" }}>.</span></div></div>
+        <div className="z"><div className="brand"><Logo size={30} /> Gremlin<span style={{ color: "var(--brand)" }}>.</span></div></div>
         <div className="z">
-          <div style={{ width: 96, marginBottom: 20 }}><Mascot size={96} /></div>
+          <div style={{ width: 96, marginBottom: 20 }}><Mascot size={96} state="success" /></div>
           <blockquote>Let the gremlin loose. It finds the <em>crash before your users do.</em></blockquote>
           <div className="who">10× the screen coverage of a random monkey — with a reproducible trace for every bug.</div>
         </div>

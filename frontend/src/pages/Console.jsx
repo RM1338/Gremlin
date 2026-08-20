@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import Logo from "../lib/Logo.jsx";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import Mascot from "../lib/Mascot.jsx";
 import { Home, Live, List, Bug, Bars, Bolt, Moon, LogOut, Chevron, Check, Screens, Book } from "../lib/icons.jsx";
 import { useStore } from "../lib/useStore.js";
 import { loadState, connectWS, startRun, loadTargets, selectTarget,
@@ -62,7 +62,7 @@ export default function Console() {
     <div className="app">
       <aside className="sidebar">
         <div className="brand">
-          <span className="logo"><Mascot size={38} float={false} /></span>
+          <span className="logo"><Logo size={34} /></span>
           <div><div className="brand-name">Gremlin<span className="dot">.</span></div><div className="brand-sub">agent console</div></div>
         </div>
 
