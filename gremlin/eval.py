@@ -16,10 +16,10 @@ Every arm gets the same action budget from the same cold start, and is measured
 on distinct screens reached (perceptual-hash dedup) and distinct bugs found.
 
     # aim it at an app — this is required, there is no useful default
-    python -m gremlin.eval --project fixtures/gremlin_bench --actions 30
+    python -m gremlin.eval --project ~/Projects/gremlin-bench-flutter --actions 30
 
     # the full ablation: model vs no-model vs random
-    python -m gremlin.eval --project fixtures/gremlin_bench --actions 30 \
+    python -m gremlin.eval --project ~/Projects/gremlin-bench-flutter --actions 30 \
         --coverage-only --monkey
 
 CAUTION: `--monkey` fires random taps through the app. On a signed-in app with

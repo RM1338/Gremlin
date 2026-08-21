@@ -84,7 +84,7 @@ void main() {
 }
 ```
 
-It installs `FlutterError.onError` and `PlatformDispatcher.onError` and prints a single, greppable line per error (plus the source location). It is the same hook crash-reporting SDKs install, so it composes with Sentry or Crashlytics — it only adds a print, it swallows nothing. Native crashes are caught with or without it, because Android logs those itself. A ready-to-copy `gremlin_probe.dart` lives in the bundled demo fixture at [`fixtures/gremlin_bench/lib/`](fixtures/gremlin_bench/lib/gremlin_probe.dart).
+It installs `FlutterError.onError` and `PlatformDispatcher.onError` and prints a single, greppable line per error (plus the source location). It is the same hook crash-reporting SDKs install, so it composes with Sentry or Crashlytics — it only adds a print, it swallows nothing. Native crashes are caught with or without it, because Android logs those itself. A ready-to-copy `gremlin_probe.dart` lives in the demo fixture, `~/Projects/gremlin-bench-flutter/lib/gremlin_probe.dart` (see `fixtures/README.md`).
 
 ## Layout
 
@@ -110,8 +110,7 @@ It installs `FlutterError.onError` and `PlatformDispatcher.onError` and prints a
 | `gremlin/dashboard.py` | FastAPI backend: serves the React console + live WebSocket + JSON APIs |
 | `frontend/` | React console (landing, auth, Overview / Live / Trace / Bugs / Benchmark) |
 | `gremlin/eval.py` | Gremlin vs. `adb shell monkey` baseline |
-| `fixtures/gremlin_bench/` | a deliberately broken Flutter app — the reproducible demo and self-test |
-| `fixtures/gremlin_bench_rn/` | the React Native mirror of the above — proves the platform abstraction |
+| `fixtures/README.md` | where the demo fixtures went, and why they are one repo each |
 | `tests/` | offline oracle checks and a device smoke test |
 
 ## Install

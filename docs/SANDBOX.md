@@ -15,7 +15,7 @@ ordinary adb serial, and is wired into the console's device picker and
 excluding the jank class in containers) are **not** done.
 
 Measured on the development laptop, redroid 13.0.0 at 1080x1920 @420dpi, against
-`fixtures/gremlin_bench` with `--policy coverage`:
+`~/Projects/gremlin-bench-flutter` with `--policy coverage`:
 
 - All six primitives work. `dump_elements` grounded 18 labelled elements with
   centres off a stock Settings screen; a 25-step run explored 5 distinct screens

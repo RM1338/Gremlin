@@ -146,10 +146,10 @@ arm taps every control once, then types once, scrolls once, and backs out, with
 
 ```bash
 # single run, no model
-python run.py --project fixtures/gremlin_bench --policy coverage
+python run.py --project ~/Projects/gremlin-bench-flutter --policy coverage
 
 # the three-arm comparison
-python -m gremlin.eval --project fixtures/gremlin_bench --actions 30 \
+python -m gremlin.eval --project ~/Projects/gremlin-bench-flutter --actions 30 \
     --coverage-only --monkey
 ```
 

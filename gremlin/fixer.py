@@ -63,10 +63,12 @@ def _require_clean_tree(cfg: Config) -> None:
     """Refuse to work on a dirty tree, and say exactly which tree that is.
 
     Naming it matters more than it looks. `cfg.scribe_root` points at whichever
-    app is selected, but git resolves it to the *enclosing repository* — and a
-    fixture kept inside this repo (`fixtures/gremlin_bench`) resolves to Gremlin
-    itself. Reporting a hardcoded project name for someone else's uncommitted
-    work is how a developer ends up hunting a tree they never touched.
+    app is selected, but git resolves it to the *enclosing repository*, which is
+    not always the app's own — an app inside a monorepo reports the monorepo's
+    tree. Reporting a hardcoded project name for someone else's uncommitted work
+    is how a developer ends up hunting a tree they never touched. (The demo
+    fixtures were moved out of this repo for exactly this reason; see
+    `fixtures/README.md`.)
     """
     status = _git(cfg, "status", "--porcelain")
     if not status:

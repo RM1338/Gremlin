@@ -252,7 +252,7 @@ This project is **not dataset-trained** — it uses a pre-trained vision model a
 
 | Sl. No. | Dataset Name | Source / URL | License Type | Size | Remarks |
 |---|---|---|---|---|---|
-| 1 | **GremlinBench (Flutter)** | Self-authored; in-repo at `fixtures/gremlin_bench/` | MIT | ~10 apps, <50 MB source | Deliberately defect-seeded apps, one isolated planted defect per screen. Ground truth is known by construction, which is what makes recall (M3) measurable |
+| 1 | **GremlinBench (Flutter)** | Self-authored; its own repository at `~/Projects/gremlin-bench-flutter` | MIT | ~10 apps, <50 MB source | Deliberately defect-seeded apps, one isolated planted defect per screen. Ground truth is known by construction, which is what makes recall (M3) measurable |
 | 2 | **GremlinBench-RN (React Native)** | Self-authored (to be built, Objective 1) | MIT | ~10 apps | Mirror of the above for React Native; validates the platform abstraction |
 | 3 | **F-Droid open-source app corpus** | https://f-droid.org | GPL/Apache/MIT (per app) | 30–50 apps, ~3 GB APK + source | Real third-party apps for external validity — defects here are *unknown*, so this measures discovery in the wild rather than recall against planted bugs |
 | 4 | **Qwen3-VL-32B-Instruct weights** | https://huggingface.co/Qwen | Apache 2.0 | ~64 GB (FP16) / ~20 GB (Q4) | Model weights for local inference. Apache 2.0 permits unrestricted local and commercial use |
