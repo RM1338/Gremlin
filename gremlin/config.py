@@ -57,8 +57,9 @@ class Config:
     policy: str = "vision"
 
     # adb device serial; None means "the only connected device". An emulator
-    # looks like "emulator-5554" and is driven exactly like a physical phone.
-    serial: str | None = None
+    # looks like "emulator-5554" and a sandbox container like "localhost:5555";
+    # both are driven exactly like a physical phone.
+    serial: str | None = os.environ.get("GREMLIN_SERIAL") or None
 
     # AVD to boot for this run when no device is connected. None means "use
     # whatever adb already sees".

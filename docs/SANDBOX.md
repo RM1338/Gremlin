@@ -8,6 +8,22 @@ Gremlin to other people.
 Written 19 Aug 2026. Kernel facts in here were checked on the development
 laptop; the build timing is measured, not estimated.
 
+**Status, 21 Aug 2026.** Steps 1-3 of the implementation order in §10 are done.
+`gremlin/sandbox.py` starts and stops a redroid container, exposes it as an
+ordinary adb serial, and is wired into the console's device picker and
+`/api/sandbox/*`. Steps 4-5 (geometry in `trace.json` with a replay guard,
+excluding the jank class in containers) are **not** done.
+
+Measured on the development laptop, redroid 13.0.0 at 1080x1920 @420dpi, against
+`fixtures/gremlin_bench` with `--policy coverage`:
+
+- All six primitives work. `dump_elements` grounded 18 labelled elements with
+  centres off a stock Settings screen; a 25-step run explored 5 distinct screens
+  and caught both planted bugs, one with its `lib/main.dart:145` source location.
+- **`Config.serial` was the only configuration needed.** No code changed.
+- Two corrections to what §2.2 and §10 assumed, both worth reading before
+  repeating this on another machine — see §4 and §11.
+
 ---
 
 ## 1. What Gremlin actually demands of a "device"
@@ -140,13 +156,26 @@ plan in Objective 2.** Mitigation is real, though: the corpus is open-source by
 definition, so those apps can be built from source targeting x86_64. Verify this
 in the first hour of corpus work, not the last week.
 
-**Software rendering changes what gets logged.** SwiftShader by default, so
-Flutter may fall back from Impeller to Skia. This cuts both ways and interacts
-directly with G5 in `KNOWN_ISSUES.md`: if Skia restores the framework's own
-logcat error forwarding, the probe requirement partly evaporates inside
-containers — a nice result. But it also means **signals observed in a container
-may not match signals observed on a phone**, which is a validity question to be
-measured rather than assumed.
+**Software rendering changes what gets logged — measured, and the answer is
+no.** The hypothesis here was that SwiftShader would push Flutter off Impeller
+and back to Skia, and that Skia might restore the framework's own logcat error
+forwarding, partly dissolving G5. It does not happen. SwiftShader provides a
+Vulkan implementation, so Flutter selects Impeller exactly as it does on a
+phone:
+
+```
+I flutter : [IMPORTANT:...android_context_vk_impeller.cc(62)]
+            Using the Impeller rendering backend (Vulkan).
+```
+
+Both bugs in the validation run were carried by the probe's `GREMLIN_BUG`
+marker, not by framework text. So **G5 is unchanged inside containers — the
+probe is still required.**
+
+That is the better outcome for validity, even though it is the less convenient
+one: the container is not a different world with its own signal vocabulary, so a
+container result and a phone result are comparable rather than merely
+correlated.
 
 **Jank becomes meaningless.** `Skipped N frames` inside a container sharing a
 laptop CPU with the vision model measures host load, not the app. The `HANG`
@@ -343,3 +372,46 @@ defensible design choice.
 4. Record geometry in `trace.json` and guard replay (G6).
 5. Exclude the jank class for containerised runs.
 6. Only then consider the multi-run refactor, and only if concurrency is a goal.
+
+---
+
+## 11. Getting binder usable — what actually happened
+
+§2.2 says "a single `sudo modprobe binder_linux` enables it". That is not
+enough, and the failure is silent, so it is worth writing down.
+
+Loading the module succeeds and creates **nothing**. Ubuntu ships
+`CONFIG_ANDROID_BINDER_DEVICES=""`, so the module's `devices` parameter is empty
+and no `/dev/binder` node appears. `lsmod` shows it loaded; there is still
+nothing for Android to talk to.
+
+The obvious repair — reload it with the devices named — is **impossible on this
+kernel**:
+
+```
+$ grep binder_linux /proc/modules
+binder_linux 253952 0 [permanent], Live
+```
+
+`[permanent]` means the module declares no exit path and cannot be unloaded
+before a reboot, so its parameter is fixed for the life of the boot. Mount
+binderfs instead; it asks nothing of the module:
+
+```
+sudo mkdir -p /dev/binderfs
+sudo mount -t binder binder /dev/binderfs   # binder /dev/binderfs binder nofail 0 0
+```
+
+A privileged container shares the host `/dev`, so a static node needs no
+plumbing, but a binderfs mount must be handed over explicitly with
+`-v /dev/binderfs:/dev/binderfs`. `sandbox.py` detects which of the two exists
+and passes it through.
+
+**Also required, and not mentioned above: `androidboot.use_memfd=true`.** ashmem
+was removed from the kernel in 5.18, and Android only falls back to memfd when
+told to. Without it the container fails at boot on any current kernel, and the
+image looks like the culprit.
+
+`gremlin.sandbox.binder_state()` distinguishes *module absent* from *module
+loaded but exposing nothing*, because the two need different commands and the
+second one otherwise reads as "the thing I just did had no effect".

@@ -8,12 +8,19 @@ retry, T2 model-authored fix behind guard/rebuild/replay gates.
 ## Where this runs
 
 Natively on the developer's machine: a virtualenv, the Android SDK's `adb`, and
-a phone on USB or an emulator. There is no container — run `python run.py`
-directly.
+a phone on USB, an emulator, or a sandbox container. Gremlin itself is never
+containerised — run `python run.py` directly.
 
-The device is real hardware someone is holding. A run holds the screen awake and
-drives taps for minutes at a time, so don't start one against an app that is not
-the target, and don't leave `svc power stayon` set after a run ends.
+The sandbox (`gremlin/sandbox.py`) containerises the *device*, not Gremlin:
+redroid on the host kernel, adb on `localhost:5555`, Linux only because it needs
+`binder_linux` loaded. It is ephemeral by design — do not add a data volume to
+make it persist, because "fresh instance per run" is the property that makes a
+benchmark reproducible.
+
+Unless a sandbox is in use, the device is real hardware someone is holding. A
+run holds the screen awake and drives taps for minutes at a time, so don't start
+one against an app that is not the target, and don't leave `svc power stayon`
+set after a run ends.
 
 ## Model backend
 

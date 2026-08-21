@@ -173,6 +173,13 @@ apps **whose source you control and have instrumented**. Native crashes
 This directly limits the console's device-only target mode, which can explore
 any installed third-party app but will mostly only catch native crashes on it.
 
+**The sandbox does not dissolve this** (measured 21 Aug 2026, `docs/SANDBOX.md`
+§4). The hope was that a container's software rendering would push Flutter back
+to Skia and restore the framework's own logcat forwarding. It does not:
+SwiftShader exposes Vulkan, Flutter selects Impeller exactly as on a phone, and
+both bugs in the validation run arrived as `GREMLIN_BUG` probe lines. The probe
+is required in containers too.
+
 **Fix.** Not a code fix — a framing one. State it as an explicit scope condition
 early in the paper rather than as a footnote, and report per-signal-class recall
 split by instrumented vs uninstrumented apps so the limit is visible in the

@@ -97,6 +97,7 @@ It installs `FlutterError.onError` and `PlatformDispatcher.onError` and prints a
 | `gremlin/platforms.py` | one `Platform` record per UI toolkit — the only toolkit-specific knowledge |
 | `gremlin/targets.py` | detect app projects to package / activity / source / platform per app |
 | `gremlin/emulator.py` | boot and manage an Android emulator, so a run needs no physical phone |
+| `gremlin/sandbox.py` | boot a containerised Android instance, so a run needs no phone *or* emulator (Linux) |
 | `gremlin/policy.py` | the exploration prompt and JSON action parsing |
 | `gremlin/vision.py` + `gemini.py` + `groq.py` | pluggable free vision backend (Gemini / Groq) |
 | `gremlin/explorer.py` | the observe / decide / act / check loop |
@@ -135,6 +136,34 @@ Gremlin drives a **real device** over USB (it does not build or install the app)
 5. Verify: `adb devices` lists it as `device`.
 
 Use a **throwaway account** with no real data — the agent taps, types, and scrolls freely.
+
+## No phone? Run a sandbox (Linux)
+
+A containerised Android instance, so a run needs no phone and no emulator. redroid
+runs Android's userspace on the host kernel — no guest kernel, no QEMU, ~2-3 GB
+instead of the emulator's 12-15 GB — and `logcat` still comes from the real `logd`,
+so the oracle's detection mechanism is unchanged.
+
+```
+sudo modprobe binder_linux        # once per boot; Android's IPC needs it
+python -m gremlin.sandbox status  # says what is missing, if anything
+python -m gremlin.sandbox start   # first start downloads the image
+adb -s localhost:5555 install -r app-debug.apk
+GREMLIN_SERIAL=localhost:5555 python run.py
+```
+
+The console offers the same thing under the device picker → **Sandbox**.
+
+Two properties are deliberate. It is **ephemeral** — no data volume, so every run
+starts from a byte-identical image, which is what makes a benchmark reproducible
+by a stranger. And its **screen geometry is a boot parameter**
+(`--width/--height/--dpi`), which matters because overflow defects are screen-size
+dependent, so sweeping form factors costs a restart rather than a second phone.
+
+**Linux only**: binder is a kernel feature, and Docker Desktop's LinuxKit VM on
+macOS/Windows does not ship it. Jank (`Skipped N frames`) also measures host load
+inside a container rather than the app — see `docs/SANDBOX.md` for the full list
+of what a container changes.
 
 ## Usage
 
