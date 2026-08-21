@@ -70,12 +70,42 @@ touched. "Nothing new broke" and "we did not go and look" produce an identical
 pass. The gate that is supposed to catch collateral damage is the one gate that
 cannot be relied on to have checked anything.
 
+**The same root cause fails in the other direction, and that half is worse.**
+Observed 21 Aug 2026, on the first real autofix attempt (sandbox, coverage
+policy, `FIX_BACKEND=claude`). The agent's patch for `renderflex-overflow` was
+correct and idiomatic — one line, `Container(width: 250, ...)` to
+`Expanded(child: Container(...))` inside the `Row`:
+
+```
+gate signal-gone        pass — target signal absent on replay
+gate screen-looks-same  pass — perceptual distance 16 (<= 32)
+gate no-new-breakage    FAIL — patch introduced: dart-exception|lib/main.dart:127
+```
+
+`lib/main.dart:127` is **planted bug 2**, the crash-on-tap, which exists in the
+unpatched app and has nothing to do with a `Row`. The baseline run had simply
+never tapped that button, so it held only two keys; the probe tapped it and the
+gate read a pre-existing defect as a regression. A correct fix was reverted.
+
+The gate's premise is that the baseline enumerates the app's defects. It does
+not — it enumerates *what one stochastic run happened to find*. Any probe that
+explores more thoroughly than the baseline reads as breakage, so this is not a
+rare coincidence: it is the expected outcome whenever the baseline run was
+incomplete, which is most runs.
+
 **Fix.** Make gate 3 deterministic like the others: replay the *other* bugs'
 recorded traces from the same run — they already exist in `trace.json` — and
 assert no new signal keys appear. Where a run has only one bug, fall back to
 replaying the fixed trace with a longer settle, or keep the exploration but
 report coverage alongside the verdict so a pass with low coverage is visibly
 weak rather than silently equal to a strong one.
+
+Determinism fixes both directions at once: a replayed trace cannot wander onto a
+screen the baseline never reached, so it can neither miss real damage nor invent
+it. If the stochastic probe is kept for any reason, the minimum honest version
+is to re-probe the **base** build whenever the gate is about to fail and drop
+any signal that reproduces there — a pre-existing defect is not breakage. That
+costs a probe run only on the failure path.
 
 ---
 
