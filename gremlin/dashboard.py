@@ -28,11 +28,14 @@ from fastapi import FastAPI, Request, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from .autofix import _load_bugs, _persist_outcome, outcome_payload
 from .config import Config, PROJECTS_ROOT
 from .device import Device
 from .explorer import Explorer
+from .fix_backend import backend_name, edits_source
+from .fixer import DirtyTreeError, fix_one, _require_clean_tree
 from .targets import all_targets
-from . import emulator, platforms, settings
+from . import emulator, platforms, sandbox, settings
 
 # The React console, built with `cd frontend && npm run build`.
 _DIST = Path(__file__).parent.parent / "frontend" / "dist"
@@ -45,9 +48,15 @@ _target_name: str | None = None  # friendly name of the selected app, for the UI
 # An emulator this dashboard booted, so it can be shut down again. None when we
 # are driving a device that was already attached — which we must never kill.
 _emulator: "emulator.Emulator | None" = None
+# A sandbox container this dashboard booted. Same contract as _emulator: we only
+# ever stop what we started.
+_sandbox: "sandbox.Sandbox | None" = None
 # The Explorer of the run in flight, so /api/stop can ask it to wind down. None
 # whenever nothing is running.
 _explorer: "Explorer | None" = None
+# True while a Tier-2 fix holds the device. A fix replays taps and re-explores,
+# so it and a run cannot share the phone; each refuses while the other has it.
+_fixing = False
 
 
 @asynccontextmanager
@@ -92,7 +101,7 @@ def _on_event(event: str, payload: dict) -> None:
 
 def _start_run() -> None:
     global _run_started
-    if _run_started:
+    if _run_started or _fixing:
         return
     _run_started = True
 
@@ -150,10 +159,14 @@ async def index() -> HTMLResponse:
 
 
 @app.post("/start")
-async def start(request: Request) -> dict:
+async def start(request: Request):
     """Start a run. An optional JSON body selects which app to test:
     {"name","package","activity","source_root"}."""
     global _target_name
+    if _fixing:
+        return JSONResponse(
+            {"error": "a Tier-2 fix is using the device — wait for it to finish"},
+            status_code=409)
     if not _run_started:
         try:
             body = await request.json()
@@ -246,6 +259,78 @@ async def api_stop() -> JSONResponse:
     return JSONResponse({"stopping": True})
 
 
+@app.post("/api/fix")
+async def api_fix(request: Request) -> JSONResponse:
+    """Attempt the Tier-2 autofix for one bug of the current run: {"bug": N}.
+
+    N is the bug's 1-based position in the run, the same number the report files
+    use. The work is minutes long — the agent patches, the APK rebuilds, the
+    trace replays, a probe re-explores — so this only reports that it started;
+    the phases and the verdict arrive over ``/ws`` as ``fix`` events.
+    """
+    global _fixing
+    if _run_started or _fixing:
+        return JSONResponse({"error": "the device is busy — stop the run first"},
+                            status_code=409)
+
+    backend = backend_name()
+    if not edits_source(backend):
+        return JSONResponse(
+            {"error": f"FIX_BACKEND is '{backend}', which only writes a prompt and "
+                      f"edits nothing. Set it to claude, codex or copilot in Settings."},
+            status_code=400)
+
+    trace = _cfg.run_dir / "trace.json"
+    if not trace.exists():
+        return JSONResponse({"error": "no run to fix — this run has no trace.json"},
+                            status_code=404)
+    bugs = _load_bugs(trace)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    n = body.get("bug")
+    if not isinstance(n, int) or not 1 <= n <= len(bugs):
+        return JSONResponse({"error": f"'bug' must be 1..{len(bugs)}"}, status_code=400)
+    bug = bugs[n - 1]
+
+    # The fixer refuses a dirty tree anyway, but it does so inside the thread —
+    # and this is the failure a developer hits most, so answer it in the response
+    # rather than as a verdict five seconds later.
+    try:
+        _require_clean_tree(_cfg)
+    except DirtyTreeError as e:
+        return JSONResponse({"error": str(e)}, status_code=409)
+
+    # Gate 3 calls anything not already known a NEW break, so the baseline has to
+    # be every bug in the run, not just the one being fixed.
+    baseline_keys = {b.dedup_key for b in bugs}
+    _fixing = True
+
+    def worker() -> None:
+        global _fixing
+        try:
+            outcome = fix_one(
+                _cfg, bug, baseline_keys, backend=backend,
+                on_phase=lambda ph: _broadcast({"event": "fix", "bug": n, "phase": ph}),
+            )
+            _persist_outcome(_cfg.run_dir, n, outcome)
+            _broadcast({"event": "fix", "bug": n, "phase": "done", **outcome_payload(outcome)})
+        except BaseException as e:
+            # Same reasoning as the run thread: a silent death here would leave
+            # the console waiting on a verdict that is never coming.
+            traceback.print_exc()
+            _broadcast({"event": "fix", "bug": n, "phase": "done", "verified": False,
+                        "gates": [], "guard_violations": [], "branch": None,
+                        "note": f"the fix failed: {type(e).__name__}: {e}"[:400]})
+        finally:
+            _fixing = False
+
+    threading.Thread(target=worker, daemon=True).start()
+    return JSONResponse({"fixing": True, "bug": n, "backend": backend,
+                         "title": bug.title()})
+
+
 @app.get("/api/targets")
 async def api_targets() -> JSONResponse:
     """App projects (full capability) plus installed apps, flagged by source."""
@@ -265,8 +350,10 @@ async def api_devices() -> JSONResponse:
     an emulator is just another adb serial to everything downstream.
     """
     status = emulator.sdk_status()
-    attached = [{"serial": s, "state": st, "emulator": emulator.is_emulator(s)}
+    attached = [{"serial": s, "state": st,
+                 "emulator": emulator.is_emulator(s), "sandbox": sandbox.is_sandbox(s)}
                 for s, st in emulator._adb_devices()]
+    box = sandbox.status()
     return JSONResponse({
         "attached": attached,
         "avds": list(status.avds),
@@ -274,6 +361,14 @@ async def api_devices() -> JSONResponse:
         "selected": _cfg.serial,
         # Non-null when we cannot offer emulator boot, and says how to fix it.
         "emulator_problem": status.problem,
+        # The third way to get a device: a container, no phone and no AVD needed.
+        "sandbox": {
+            "serial": sandbox.SERIAL,
+            "running": box.container == "running",
+            "can_start": box.can_start,
+            "problem": box.problem,   # e.g. binder not loaded, with the fix
+            "note": box.note,         # e.g. the first start downloads the image
+        },
     })
 
 
@@ -318,6 +413,45 @@ async def api_emulator_stop() -> JSONResponse:
     return JSONResponse({"stopped": True})
 
 
+@app.post("/api/sandbox/start")
+async def api_sandbox_start(request: Request) -> JSONResponse:
+    """Boot a containerised Android instance and select it for the next run.
+
+    Geometry is a boot parameter rather than a fixed property of the machine,
+    which is what makes a form-factor sweep cheap — overflow defects are screen-
+    size dependent, so the same app is worth exploring at several widths.
+    """
+    global _sandbox
+    if _run_started or _fixing:
+        return JSONResponse({"error": "the device is busy"}, status_code=409)
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    try:
+        # The first start pulls a couple of GB, so this cannot hold the event
+        # loop any more than an emulator boot can.
+        started = await asyncio.to_thread(
+            sandbox.Sandbox.start, body.get("width"), body.get("height"), body.get("dpi"))
+    except (RuntimeError, TimeoutError) as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    _sandbox = started
+    _cfg.serial = started.serial
+    return JSONResponse({"serial": started.serial, "width": started.width,
+                         "height": started.height, "dpi": started.dpi})
+
+
+@app.post("/api/sandbox/stop")
+async def api_sandbox_stop() -> JSONResponse:
+    """Tear the container down. Its state is discarded — that is the point."""
+    global _sandbox
+    await asyncio.to_thread(sandbox.stop)
+    if _cfg.serial == sandbox.SERIAL:
+        _cfg.serial = None
+    _sandbox = None
+    return JSONResponse({"stopped": True})
+
+
 @app.get("/api/state")
 async def api_state() -> JSONResponse:
     """Everything the SPA needs at load: run summary, eval, screenshot index."""
@@ -330,6 +464,7 @@ async def api_state() -> JSONResponse:
     return JSONResponse(
         {
             "running": _run_started,
+            "fixing": _fixing,
             "package": _cfg.package,
             "target_name": _target_name,
             "trace": trace,

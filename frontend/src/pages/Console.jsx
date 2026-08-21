@@ -4,7 +4,8 @@ import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Home, Live, List, Bug, Bars, Bolt, Stop, LogOut, Chevron, Check, Screens, Book, Wrench } from "../lib/icons.jsx";
 import { useStore } from "../lib/useStore.js";
 import { loadState, connectWS, startRun, stopRun, loadTargets, selectTarget,
-  loadDevices, selectDevice, startEmulator, stopEmulator } from "../lib/store.js";
+  loadDevices, selectDevice, startEmulator, stopEmulator,
+  startSandbox, stopSandbox } from "../lib/store.js";
 import { getUser, signOut, initials } from "../lib/auth.js";
 import { formatDuration } from "../lib/notify.js";
 
@@ -128,17 +129,18 @@ function DevicePicker({ st, disabled, onNotify }) {
     return () => document.removeEventListener("mousedown", close);
   }, []);
 
-  const { devices, avds, serial, emulatorProblem, booting } = st;
+  const { devices, avds, serial, emulatorProblem, booting, sandbox } = st;
   const current = devices.find((d) => d.serial === serial) || null;
   // An emulator we booted is stoppable; a phone on USB is not ours to kill.
   const runningEmu = devices.find((d) => d.emulator && d.serial === serial);
   // A phone that hasn't had its USB-debugging dialog accepted can't be driven.
   const unauthorized = devices.filter((d) => d.state === "unauthorized");
 
-  const label = booting ? "Booting emulator…"
-    : current ? (current.emulator ? "Emulator" : "Phone (USB)")
-    : devices.length === 1 ? (devices[0].emulator ? "Emulator" : "Phone (USB)")
-    : devices.length === 0 ? "No device" : "Pick device";
+  const kind = (d) => d.sandbox ? "Sandbox" : d.emulator ? "Emulator" : "Phone (USB)";
+  const label = booting
+    || (current ? kind(current)
+    : devices.length === 1 ? kind(devices[0])
+    : devices.length === 0 ? "No device" : "Pick device");
 
   async function pickDevice(d) {
     setOpen(false);
@@ -160,6 +162,25 @@ function DevicePicker({ st, disabled, onNotify }) {
     }
   }
 
+  async function bootSandbox() {
+    setOpen(false);
+    onNotify(sandbox?.note
+      ? "Starting the sandbox — the first start downloads the image, so give it a few minutes…"
+      : "Starting the sandbox — about a minute…", 300000);
+    try {
+      const d = await startSandbox();
+      onNotify(`Sandbox ready: ${d.serial} at ${d.width}x${d.height}`);
+    } catch (e) {
+      onNotify(`Sandbox did not start: ${e.message}`, 15000);
+    }
+  }
+
+  async function shutdownSandbox() {
+    setOpen(false);
+    await stopSandbox();
+    onNotify("Sandbox stopped — its state is gone, which is the point.");
+  }
+
   async function shutdown() {
     setOpen(false);
     await stopEmulator();
@@ -178,19 +199,40 @@ function DevicePicker({ st, disabled, onNotify }) {
         <div className="tp-menu">
           <div className="tp-scroll">
             <div className="tp-head">Connected</div>
-            {devices.length === 0 && <div className="tp-none">Nothing attached — boot an emulator below.</div>}
+            {devices.length === 0 && <div className="tp-none">Nothing attached — start a sandbox or boot an emulator below.</div>}
             {devices.map((d) => (
               <div key={d.serial} className={"tp-item" + (d.serial === serial ? " sel" : "")}
                 onClick={() => pickDevice(d)}>
                 <span className={"pulse " + (d.state === "device" ? "live" : "idle")} />
                 <div className="tp-item-main">
-                  <div className="tp-item-name">{d.emulator ? "Emulator" : "Phone (USB)"}</div>
+                  <div className="tp-item-name">{kind(d)}</div>
                   <div className="tp-item-pkg">{d.serial}</div>
                 </div>
                 {d.state !== "device" && <span className="tp-badge">{d.state}</span>}
                 {d.serial === serial && <Check style={{ width: 15, height: 15, color: "var(--brand)", flex: "none" }} />}
               </div>
             ))}
+
+            <div className="tp-head">Sandbox</div>
+            {sandbox?.running ? (
+              <div className="tp-item" onClick={shutdownSandbox}>
+                <span className="pulse live" />
+                <div className="tp-item-main">
+                  <div className="tp-item-name">Stop sandbox</div>
+                  <div className="tp-item-pkg">{sandbox.serial}</div>
+                </div>
+              </div>
+            ) : sandbox?.can_start ? (
+              <div className="tp-item" onClick={bootSandbox}>
+                <span className="pulse idle" />
+                <div className="tp-item-main">
+                  <div className="tp-item-name">Android container</div>
+                  <div className="tp-item-pkg">{sandbox.note || "no phone needed · fresh every start"}</div>
+                </div>
+              </div>
+            ) : (
+              <div className="tp-none">{sandbox?.problem || "Checking for Docker…"}</div>
+            )}
 
             <div className="tp-head">Emulators</div>
             {emulatorProblem

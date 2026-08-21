@@ -4,6 +4,18 @@ import Mascot from "../lib/Mascot.jsx";
 import { sevClass, screenUrl, Pager, Lightbox } from "../lib/ui.jsx";
 import { usePaged } from "../lib/usePaged.js";
 import { useStore } from "../lib/useStore.js";
+import { startFix } from "../lib/store.js";
+
+// What the server is doing between the click and the verdict. Minutes, not
+// seconds — so the stage names are the progress bar.
+const PHASES = {
+  starting: "Starting…",
+  patching: "The agent is patching the source…",
+  guard: "Guarding the diff against symptom-silencers…",
+  rebuild: "Rebuilding and installing the APK…",
+  replay: "Replaying the trace that caused the bug…",
+  probe: "Re-exploring the app for new breakage…",
+};
 
 // The three gates the Tier-2 autofix must clear, in pipeline order. Names match
 // gremlin/gates.py so the UI stays honest about what actually runs.
@@ -38,7 +50,7 @@ export default function Bugs() {
         </div>
       ) : (
         <div className="bug-list" ref={pg.ref}>
-          {pg.slice.map((b, i) => <BugCard key={pg.from + i} bug={b} backend={st.fixBackend} />)}
+          {pg.slice.map((b, i) => <BugCard key={pg.from + i} bug={b} n={pg.from + i + 1} backend={st.fixBackend} />)}
         </div>
       )}
       <Pager {...pg} total={bugs.length} unit="bugs" onPage={pg.setPage} />
@@ -47,7 +59,7 @@ export default function Bugs() {
   );
 }
 
-function BugCard({ bug: b, backend }) {
+function BugCard({ bug: b, n, backend }) {
   const [tier, setTier] = useState(0);
   const [zoom, setZoom] = useState(null);
   const shot = b.screenshot ? b.screenshot.split("/").pop() : null;
@@ -80,7 +92,7 @@ function BugCard({ bug: b, backend }) {
         <div className="tier-body">
           {tier === 0 && <Tier0 bug={b} />}
           {tier === 1 && <Tier1 bug={b} />}
-          {tier === 2 && <Tier2 bug={b} backend={backend} />}
+          {tier === 2 && <Tier2 bug={b} n={n} backend={backend} />}
         </div>
       </div>
       <Lightbox src={zoom} caption={b.title || b.kind} onClose={() => setZoom(null)} />
@@ -134,8 +146,12 @@ function Tier1({ bug: b }) {
   );
 }
 
-function Tier2({ bug: b, backend }) {
+function Tier2({ bug: b, n, backend }) {
+  const st = useStore();
   const fix = b.tier2_fix;
+  const busy = st.fixingBug !== null;          // one device, one fix at a time
+  const mine = st.fixingBug === n;             // ...and this card's fix is the one
+  const canRun = backend && backend !== "prompt";
   const gateByName = {};
   (fix?.gates || []).forEach((g) => { gateByName[g.name] = g; });
   const status = fix ? (fix.verified ? "verified" : "reverted") : "pending";
@@ -160,11 +176,24 @@ function Tier2({ bug: b, backend }) {
       </div>
 
       {fix?.branch && <div className="tier-sub" style={{ marginTop: 12 }}>Patch left on branch <code>{fix.branch}</code> for review.</div>}
-      {!fix && (
-        <>
-          <div className="tier-sub" style={{ marginTop: 12 }}>Run it against this bug</div>
-          <pre className="cmd">python -m gremlin.autofix --run runs/latest --backend {backend && backend !== "prompt" ? backend : "claude"}</pre>
-        </>
+
+      {mine && <div className="fix-progress"><span className="spin" />{PHASES[st.fixPhase] || "Working…"}</div>}
+      {st.fixError?.bug === n && !busy && <div className="fix-error">{st.fixError.msg}</div>}
+
+      {!mine && (
+        <div className="fix-actions">
+          <button className="btn btn-primary" disabled={busy || st.running || !canRun}
+                  onClick={() => startFix(n)}>
+            <Wrench /> {fix ? "Try again" : "Attempt fix"}
+          </button>
+          <span className="fix-hint">
+            {!canRun
+              ? <>Set <code>FIX_BACKEND</code> to a coding agent in Settings first — <code>prompt</code> only writes the T1 prompt.</>
+              : st.running ? "The device is busy with a run."
+              : busy ? "Another fix is using the device."
+              : "Takes several minutes. The patch is reverted unless every gate passes."}
+          </span>
+        </div>
       )}
     </div>
   );

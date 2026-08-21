@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import subprocess
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field, replace
 from pathlib import Path
 
@@ -59,12 +60,34 @@ def _git(cfg: Config, *args: str, check: bool = True) -> str:
 
 
 def _require_clean_tree(cfg: Config) -> None:
+    """Refuse to work on a dirty tree, and say exactly which tree that is.
+
+    Naming it matters more than it looks. `cfg.scribe_root` points at whichever
+    app is selected, but git resolves it to the *enclosing repository* — and a
+    fixture kept inside this repo (`fixtures/gremlin_bench`) resolves to Gremlin
+    itself. Reporting a hardcoded project name for someone else's uncommitted
+    work is how a developer ends up hunting a tree they never touched.
+    """
     status = _git(cfg, "status", "--porcelain")
-    if status:
-        raise DirtyTreeError(
-            "Scribe working tree is dirty; refusing to run the fixer. Commit or "
-            "stash your changes first — the fixer only operates on a clean tree."
-        )
+    if not status:
+        return
+    root = Path(_git(cfg, "rev-parse", "--show-toplevel", check=False) or cfg.scribe_root)
+    changed = status.splitlines()
+    shown = "\n".join(f"    {line.strip()}" for line in changed[:5])
+    if len(changed) > 5:
+        shown += f"\n    ... and {len(changed) - 5} more"
+    note = ""
+    if root.resolve() != Path(cfg.scribe_root).resolve():
+        # The surprising case, and the one worth spelling out: the fix would be
+        # committed to the outer repository, not to the app's own.
+        note = (f"\n  note: the app at {cfg.scribe_root} is inside the {root.name} "
+                f"repository, so this is {root.name}'s tree — a fix here would be "
+                f"committed to {root.name}, not to the app alone.")
+    raise DirtyTreeError(
+        f"{root.name} has {len(changed)} uncommitted change(s); refusing to run "
+        f"the fixer, which only operates on a clean tree. Commit or stash first."
+        f"\n  repo: {root}\n{shown}{note}"
+    )
 
 
 def rebuild_and_install(cfg: Config) -> None:
@@ -82,13 +105,18 @@ def rebuild_and_install(cfg: Config) -> None:
 
 
 def fix_one(cfg: Config, bug: Bug, baseline_keys: set[str],
-            do_rebuild: bool = True, backend: str | None = None) -> FixOutcome:
+            do_rebuild: bool = True, backend: str | None = None,
+            on_phase: Callable[[str], None] | None = None) -> FixOutcome:
     """Attempt a fix for one bug and grade it against the three gates.
 
     `backend` selects the coding agent that writes the patch (see fix_backend);
     None uses the FIX_BACKEND env default. The guard, rebuild, replay and gates
     are identical regardless of which agent produced the diff.
+
+    `on_phase` is called with the name of each stage as it begins. A whole fix is
+    minutes long, so a caller with a UI needs to say which minute it is in.
     """
+    phase = on_phase or (lambda _p: None)
     _require_clean_tree(cfg)
     base = _git(cfg, "rev-parse", "--abbrev-ref", "HEAD")
     branch = f"gremlin/fix-{bug.kind}-{int(time.time())}"
@@ -98,6 +126,7 @@ def fix_one(cfg: Config, bug: Bug, baseline_keys: set[str],
     try:
         # --- Patch: let the configured coding agent edit the source here ---
         prompt = tier1_prompt(bug, cfg)
+        phase("patching")
         try:
             apply_fix(prompt, cwd=cfg.scribe_root, backend=backend, timeout=300)
         except FixBackendError as e:
@@ -115,6 +144,7 @@ def fix_one(cfg: Config, bug: Bug, baseline_keys: set[str],
             return outcome
 
         # --- Static guard: reject the obvious symptom-silencers ---
+        phase("guard")
         guard = guard_patch_diff(diff)
         if not guard.ok:
             outcome.guard_violations = guard.violations
@@ -128,9 +158,11 @@ def fix_one(cfg: Config, bug: Bug, baseline_keys: set[str],
 
         # --- Rebuild so replay exercises the patched code ---
         if do_rebuild:
+            phase("rebuild")
             rebuild_and_install(cfg)
 
         # --- Gate 1 + 2: replay the trace, check signal + screen ---
+        phase("replay")
         result = replay(cfg, bug.trace)
         g1 = signal_gone(result.keys(), bug.dedup_key)
         pre_png = Path(bug.screenshot).read_bytes()
@@ -149,6 +181,7 @@ def fix_one(cfg: Config, bug: Bug, baseline_keys: set[str],
         probe_cfg = replace(cfg, run_dir=cfg.run_dir / "gate3-verify",
                             max_steps=min(cfg.max_steps, 15))
         probe = Explorer(probe_cfg)
+        phase("probe")
         probe.run()
         g3 = no_new_breakage(set(probe.bugs.keys()), baseline_keys)
 

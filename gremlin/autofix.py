@@ -125,19 +125,24 @@ def main() -> None:
         print(f"refusing: {e}")
 
 
-def _persist_outcome(run_dir: Path, index: int, outcome) -> None:
-    """Write a bug's Tier-2 result to ``reports/bug_NNN.fix.json`` so the dashboard
-    can render the gate ladder for a real autofix run."""
-    reports = run_dir / "reports"
-    reports.mkdir(parents=True, exist_ok=True)
-    payload = {
+def outcome_payload(outcome) -> dict:
+    """The gate ladder as the console reads it — on disk and over the websocket."""
+    return {
         "verified": outcome.verified,
         "branch": outcome.branch,
         "note": outcome.note,
         "guard_violations": list(outcome.guard_violations),
         "gates": [{"name": g.name, "passed": g.passed, "detail": g.detail} for g in outcome.gates],
     }
-    (reports / f"bug_{index:03d}.fix.json").write_text(json.dumps(payload, indent=2))
+
+
+def _persist_outcome(run_dir: Path, index: int, outcome) -> None:
+    """Write a bug's Tier-2 result to ``reports/bug_NNN.fix.json`` so the dashboard
+    can render the gate ladder for a real autofix run."""
+    reports = run_dir / "reports"
+    reports.mkdir(parents=True, exist_ok=True)
+    (reports / f"bug_{index:03d}.fix.json").write_text(
+        json.dumps(outcome_payload(outcome), indent=2))
 
 
 if __name__ == "__main__":

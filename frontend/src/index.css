@@ -609,6 +609,16 @@ button { font-family: inherit; }
 .fix-status.reverted { color: var(--crash); border-color: color-mix(in srgb, var(--crash) 40%, var(--hair)); } .fix-status.reverted .dot { background: var(--crash); }
 .fix-status.pending { color: var(--muted); } .fix-status.pending .dot { background: var(--faint); }
 .fix-backend { font: 12px var(--mono); color: var(--muted); } .fix-backend b { color: var(--ink-dim); }
+.fix-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 14px; }
+.fix-hint { flex: 1 1 200px; font: 12px/1.5 var(--sans); color: var(--muted); }
+.fix-hint code { font: 11px var(--mono); color: var(--ink-dim); }
+.fix-progress { display: flex; align-items: center; gap: 10px; margin-top: 14px; padding: 11px 14px; border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--brand) 34%, var(--hair)); background: color-mix(in srgb, var(--brand) 7%, var(--surface-1));
+  font: 500 12.5px var(--sans); color: var(--ink-dim); }
+.fix-progress .spin { width: 14px; height: 14px; flex: none; border-radius: 50%; border: 2px solid var(--hair); border-top-color: var(--brand); animation: spin .8s linear infinite; }
+.fix-error { margin-top: 14px; padding: 11px 14px; border-radius: 8px; border: 1px solid color-mix(in srgb, var(--crash) 40%, var(--hair));
+  background: color-mix(in srgb, var(--crash) 7%, var(--surface-1)); font: 12.5px/1.5 var(--sans); color: var(--crash);
+  white-space: pre-line; overflow-x: auto; }
 
 .gate-ladder { display: flex; flex-direction: column; gap: 8px; }
 .gate { display: flex; align-items: flex-start; gap: 11px; padding: 11px 13px; border: 1px solid var(--hair); border-radius: 10px; background: var(--surface-1); }

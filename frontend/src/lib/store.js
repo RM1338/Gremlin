@@ -23,8 +23,16 @@ let state = {
   avds: [],           // AVD names we could boot
   serial: null,       // chosen adb serial; null = "whatever adb sees"
   emulatorProblem: null, // why we can't offer an emulator, if we can't
-  booting: false,     // an AVD is starting up
+  // A third way to get a device, for a developer with neither phone nor AVD:
+  // {serial, running, can_start, problem, note}. null until /api/devices answers.
+  sandbox: null,
+  booting: null,      // label of the device coming up ("Booting emulator…"), or null
   stopping: false,    // a stop was requested; the run ends after the current step
+  // A Tier-2 fix in flight: which bug (1-based, 0 when a refresh found one already
+  // running), and the stage it is in. Minutes long, so the stage is the progress.
+  fixingBug: null,
+  fixPhase: "",
+  fixError: null,     // {bug, msg} — why THAT bug's fix could not be started
 };
 
 const listeners = new Set();
@@ -65,6 +73,8 @@ export async function loadState() {
       loading: false, running: d.running, package: d.package || state.package,
       trace: d.trace, evalData: d.eval, screens: d.screens || [],
       fixBackend: d.fix_backend || state.fixBackend,
+      // A fix survives a page reload; the server knows, this tab may not.
+      fixingBug: d.fixing ? (state.fixingBug ?? 0) : null,
     });
   } catch {
     // Static deploy (no backend): fall back to a bundled recorded run if present.
@@ -104,6 +114,7 @@ export async function loadDevices() {
       avds: d.avds || [],
       serial: d.selected ?? null,
       emulatorProblem: d.emulator_problem ?? null,
+      sandbox: d.sandbox ?? null,
     });
   } catch { /* no backend */ }
 }
@@ -123,7 +134,7 @@ export async function selectDevice(serial) {
 
 export async function startEmulator(avd, { headless = false } = {}) {
   if (state.booting) return;
-  set({ booting: true });
+  set({ booting: "Booting emulator…" });
   try {
     const r = await fetch("/api/emulator/start", {
       method: "POST",
@@ -139,8 +150,41 @@ export async function startEmulator(avd, { headless = false } = {}) {
     await loadTargets();
     return d;
   } finally {
-    set({ booting: false });
+    set({ booting: null });
   }
+}
+
+/* Boot a containerised Android instance — the option for a developer with no
+   phone and no AVD. Same shape as startEmulator on purpose: it ends with an adb
+   serial, and nothing downstream can tell the difference. */
+export async function startSandbox({ width, height, dpi } = {}) {
+  if (state.booting) return;
+  set({ booting: "Starting sandbox…" });
+  try {
+    const r = await fetch("/api/sandbox/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ width, height, dpi }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || "the sandbox did not start");
+    set({ serial: d.serial });
+    await loadDevices();
+    // A fresh container has no apps installed at all, so the old device's list
+    // is not merely stale — it is wrong.
+    await loadTargets();
+    return d;
+  } finally {
+    set({ booting: null });
+  }
+}
+
+export async function stopSandbox() {
+  try {
+    await fetch("/api/sandbox/stop", { method: "POST" });
+  } catch { /* no backend */ }
+  await loadDevices();
+  await loadTargets();
 }
 
 export async function stopEmulator() {
@@ -153,6 +197,7 @@ export async function stopEmulator() {
 
 export async function startRun(target) {
   if (state.running) return;
+  if (state.fixingBug !== null) throw new Error("A Tier-2 fix is using the device. Wait for it to finish.");
   const t = target || state.selected;
   // Ask for notification permission up front, while we have a user gesture.
   if ("Notification" in window && Notification.permission === "default") {
@@ -184,6 +229,25 @@ export async function stopRun() {
   }
 }
 
+/* Trigger the Tier-2 autofix for one bug, by its 1-based number in the run.
+   Like stopRun, the interesting part does not happen here: the server patches,
+   rebuilds, replays and re-explores for minutes, reporting each stage over the
+   websocket. This call only gets a yes or a reason why not. */
+export async function startFix(n) {
+  if (state.fixingBug !== null || state.running) return;
+  set({ fixingBug: n, fixPhase: "starting", fixError: null });
+  try {
+    const r = await fetch("/api/fix", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ bug: n }),
+    });
+    if (!r.ok) throw new Error((await r.json()).error || "could not start the fix");
+  } catch (e) {
+    set({ fixingBug: null, fixPhase: "", fixError: { bug: n, msg: e.message } });
+  }
+}
+
 let ws = null;
 export function connectWS() {
   if (ws) return;
@@ -194,6 +258,7 @@ export function connectWS() {
     if (m.event === "step") onStep(m);
     else if (m.event === "bug") onBug(m);
     else if (m.event === "done") onDone(m);
+    else if (m.event === "fix") onFix(m);
   };
   ws.onclose = () => { ws = null; setTimeout(connectWS, 1500); };
   ws.onerror = () => { try { ws.close(); } catch {} };
@@ -206,6 +271,14 @@ function onStep(m) {
 function onBug(m) {
   set({ live: { ...state.live, bugs: [...state.live.bugs, m] } });
 }
+async function onFix(m) {
+  if (m.phase !== "done") { set({ fixingBug: m.bug, fixPhase: m.phase }); return; }
+  set({ fixingBug: null, fixPhase: "" });
+  // The verdict is already on disk as bug_NNN.fix.json; reloading is what puts
+  // the gate ladder on the card, and keeps one source of truth for it.
+  await loadState();
+}
+
 async function onDone(m) {
   set({ running: false, done: true, stopping: false, summary: m });
   notifyRunComplete(m);
