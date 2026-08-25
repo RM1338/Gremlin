@@ -19,6 +19,7 @@ import asyncio
 import base64
 import json
 import threading
+import time
 import traceback
 from contextlib import asynccontextmanager
 from dataclasses import replace
@@ -435,6 +436,11 @@ async def api_devices() -> JSONResponse:
         "avds": list(status.avds),
         "running_emulators": emulator.running_emulators(),
         "selected": _cfg.serial,
+        # A boot started by an earlier request and still running, or how the last
+        # one ended. This is what the browser watches instead of waiting on a
+        # response that outlives its own timeout.
+        "boot": {**_boot, "elapsed": round(time.time() - _boot["since"], 1)
+                 if _boot["state"] == "starting" else 0},
         # Non-null when we cannot offer emulator boot, and says how to fix it.
         "emulator_problem": status.problem,
         # The third way to get a device: a container, no phone and no AVD needed.
@@ -478,6 +484,36 @@ async def api_select_device(request: Request) -> JSONResponse:
     return JSONResponse({"selected": _cfg.serial})
 
 
+# A device boot in flight. Booting takes minutes — a first sandbox start pulls
+# 2-3 GB, an emulator without KVM can take half an hour — and no browser will
+# hold a request open that long: Firefox drops it at 300s and reports a
+# NetworkError, so a boot that *succeeded* was reported to the user as a
+# failure. The work outlives the request; the browser polls /api/devices for
+# how it went.
+_boot: dict = {"kind": "", "state": "idle", "error": "", "since": 0.0}
+
+
+def _start_boot(kind: str, work) -> JSONResponse:
+    """Run `work()` on a thread and answer immediately with 202."""
+    global _boot
+    if _boot["state"] == "starting":
+        return JSONResponse(
+            {"error": f"a {_boot['kind']} is already starting"}, status_code=409)
+    _boot = {"kind": kind, "state": "starting", "error": "", "since": time.time()}
+
+    def worker() -> None:
+        global _boot
+        try:
+            work()
+            _boot = {**_boot, "state": "ready"}
+        except BaseException as e:
+            traceback.print_exc()
+            _boot = {**_boot, "state": "failed", "error": f"{type(e).__name__}: {e}"[:300]}
+
+    threading.Thread(target=worker, daemon=True).start()
+    return JSONResponse({"starting": True, "kind": kind}, status_code=202)
+
+
 @app.post("/api/emulator/start")
 async def api_emulator_start(request: Request) -> JSONResponse:
     """Boot an AVD and select it, so the next run has something to drive."""
@@ -488,16 +524,14 @@ async def api_emulator_start(request: Request) -> JSONResponse:
         body = await request.json()
     except Exception:
         body = {}
-    try:
-        # Booting blocks for up to a few minutes, so it must not hold the event
-        # loop — every other endpoint (including the run's websocket) shares it.
-        started = await asyncio.to_thread(
-            emulator.Emulator.start, body.get("avd"), headless=bool(body.get("headless")))
-    except (RuntimeError, TimeoutError) as e:
-        return JSONResponse({"error": str(e)}, status_code=400)
-    _emulator = started
-    _cfg.serial = started.serial
-    return JSONResponse({"serial": started.serial, "avd": started.avd})
+    def work() -> None:
+        global _emulator
+        started = emulator.Emulator.start(
+            body.get("avd"), headless=bool(body.get("headless")))
+        _emulator = started
+        _cfg.serial = started.serial
+
+    return _start_boot("emulator", work)
 
 
 @app.post("/api/emulator/stop")
@@ -526,17 +560,14 @@ async def api_sandbox_start(request: Request) -> JSONResponse:
         body = await request.json()
     except Exception:
         body = {}
-    try:
-        # The first start pulls a couple of GB, so this cannot hold the event
-        # loop any more than an emulator boot can.
-        started = await asyncio.to_thread(
-            sandbox.Sandbox.start, body.get("width"), body.get("height"), body.get("dpi"))
-    except (RuntimeError, TimeoutError) as e:
-        return JSONResponse({"error": str(e)}, status_code=400)
-    _sandbox = started
-    _cfg.serial = started.serial
-    return JSONResponse({"serial": started.serial, "width": started.width,
-                         "height": started.height, "dpi": started.dpi})
+    def work() -> None:
+        global _sandbox
+        started = sandbox.Sandbox.start(
+            body.get("width"), body.get("height"), body.get("dpi"))
+        _sandbox = started
+        _cfg.serial = started.serial
+
+    return _start_boot("sandbox", work)
 
 
 @app.post("/api/sandbox/stop")

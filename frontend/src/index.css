@@ -702,6 +702,23 @@ button { font-family: inherit; }
    everything that reads off it stacks down the narrow one, so the two columns
    come out roughly level instead of one tall card beside a short orphan.
    align-items:start keeps each card as tall as what is in it. */
+/* The benchmark lives on the landing page now, where the page scrolls and the
+   tables have somewhere to go. These lay it out in a marketing section rather
+   than the console's fixed-height grid, which is what they were overflowing. */
+.bench-cards { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 18px; align-items: start; }
+.bench-cards .col { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
+.bench-wide { margin-top: 18px; }
+.bench-runs { margin-top: 18px; border: 1px solid var(--hair); border-radius: var(--r-md);
+  background: var(--surface-1); padding: 14px 18px; }
+.bench-runs summary { cursor: pointer; font: 500 13px var(--sans); color: var(--ink-dim); }
+.bench-runs summary:hover { color: var(--ink); }
+.proof-pending, .proof-demo { margin-top: 18px; padding: 14px 18px; border-radius: var(--r-md);
+  border: 1px dashed var(--hair); background: var(--surface-1); color: var(--muted);
+  font: 13px/1.6 var(--sans); }
+.proof-demo { border-style: solid; border-color: color-mix(in srgb, var(--layout) 40%, var(--hair));
+  color: var(--layout); }
+@media (max-width: 900px) { .bench-cards { grid-template-columns: minmax(0, 1fr); } }
+
 /* Benchmark provenance strip: what the number was measured on. A benchmark
    without its environment is a rumour, and screen geometry in particular changes
    the layout-defect count outright. */

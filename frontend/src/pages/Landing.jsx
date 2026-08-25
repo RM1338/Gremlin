@@ -4,14 +4,15 @@ import NibScene from "../lib/NibScene.jsx";
 import { SiteNav, SiteFooter, DotField, FaqList, USE_CASES } from "../lib/SiteChrome.jsx";
 import { Bolt, Eye, Bug, Route, Bars, Check, Brain, Clock, Doc } from "../lib/icons.jsx";
 import { isAuthed } from "../lib/auth.js";
+import BenchmarkSection from "../lib/BenchmarkSection.jsx";
 
 /* The page is built around the one idea the product actually rests on: the
  * model decides where to go, the log decides what is broken.
  *
  * Nothing here claims a number that has not been measured. The benchmark
- * section describes the experiment and says plainly that the result is pending,
- * because a landing page asserting "10x more screens" before the ablation has
- * run is the fastest way to lose a reader who checks.
+ * section renders whatever the last real run produced and says plainly when
+ * there is nothing yet, because a landing page asserting "10x more screens"
+ * before the ablation has run is the fastest way to lose a reader who checks.
  */
 
 const STACK = ["Flutter", "React Native", "Android", "adb + logcat", "Local models", "Real devices", "Emulators"];
@@ -209,26 +210,7 @@ export default function Landing() {
         </div>
       </section>
 
-      <section className="section" id="proof">
-        <h2 className="section-title">Measured, not asserted</h2>
-        <p className="section-lede">
-          Three arms, one action budget, the same cold start &mdash; so the model's contribution is a
-          number rather than a claim.
-        </p>
-        <div className="proof-box">
-          <ul>
-            <li><b>Android's Monkey</b> &mdash; random taps, the standard baseline.</li>
-            <li><b>Gremlin without the model</b> &mdash; accessibility grounding and coverage memory only.</li>
-            <li><b>Gremlin</b> &mdash; the full agent.</li>
-          </ul>
-          <p>
-            The second arm is the honest one: it isolates what the vision model actually
-            contributes, rather than crediting it for what the coverage bookkeeping does. Results
-            are pending &mdash; the numbers will be published here once they have been run over enough
-            seeds to report a spread.
-          </p>
-        </div>
-      </section>
+      <BenchmarkSection />
 
       <section className="section">
         <h2 className="section-title">Where your app&rsquo;s screens go</h2>

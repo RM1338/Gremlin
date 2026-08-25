@@ -26,6 +26,7 @@ let state = {
   // A third way to get a device, for a developer with neither phone nor AVD:
   // {serial, running, can_start, problem, note}. null until /api/devices answers.
   sandbox: null,
+  boot: null,       // a device boot in flight, or how the last one ended
   booting: null,      // label of the device coming up ("Booting emulator…"), or null
   stopping: false,    // a stop was requested; the run ends after the current step
   // A Tier-2 fix in flight: which bug (1-based, 0 when a refresh found one already
@@ -155,6 +156,7 @@ export async function loadDevices() {
       serial: d.selected ?? null,
       emulatorProblem: d.emulator_problem ?? null,
       sandbox: d.sandbox ?? null,
+      boot: d.boot ?? null,
     });
   } catch { /* no backend */ }
 }
@@ -172,51 +174,56 @@ export async function selectDevice(serial) {
   await loadTargets();
 }
 
-export async function startEmulator(avd, { headless = false } = {}) {
+/* Kick off a device boot and watch it from outside the request.
+   The server answers 202 immediately, because the boot is longer than any
+   browser will hold a fetch open: Firefox drops it at 300s, so waiting on the
+   response reported a sandbox that had started perfectly as a NetworkError. */
+async function bootDevice(url, body, label) {
   if (state.booting) return;
-  set({ booting: "Booting emulator…" });
+  set({ booting: label });
   try {
-    const r = await fetch("/api/emulator/start", {
+    const r = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ avd, headless }),
+      body: JSON.stringify(body),
     });
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.error || "the emulator did not start");
-    set({ serial: d.serial });
-    await loadDevices();
-    // A freshly booted emulator has none of the developer's apps installed yet,
-    // so re-read the target list rather than showing the old device's apps.
+    if (!r.ok && r.status !== 202) {
+      const d = await r.json().catch(() => ({}));
+      throw new Error(d.error || "the device did not start");
+    }
+    const boot = await pollBoot();
+    if (boot.state === "failed") throw new Error(boot.error || "the device did not start");
+    // A freshly booted device has none of the developer's apps on it, so the
+    // old device's target list is not merely stale — it is wrong.
     await loadTargets();
-    return d;
+    return { serial: state.serial, ...boot };
   } finally {
     set({ booting: null });
   }
+}
+
+/* Poll /api/devices until the boot settles. No timeout of our own: the boot has
+   its own (redroid 180s, the emulator's longer), and inventing a shorter one
+   here is what produced the false failure in the first place. */
+async function pollBoot() {
+  for (;;) {
+    await new Promise((r) => setTimeout(r, 3000));
+    await loadDevices();
+    const b = state.boot;
+    if (!b || b.state !== "starting") return b || { state: "ready" };
+    set({ booting: `${state.booting.replace(/ \(\d+s\)$/, "")} (${Math.round(b.elapsed)}s)` });
+  }
+}
+
+export async function startEmulator(avd, { headless = false } = {}) {
+  return bootDevice("/api/emulator/start", { avd, headless }, "Booting emulator…");
 }
 
 /* Boot a containerised Android instance — the option for a developer with no
    phone and no AVD. Same shape as startEmulator on purpose: it ends with an adb
    serial, and nothing downstream can tell the difference. */
 export async function startSandbox({ width, height, dpi } = {}) {
-  if (state.booting) return;
-  set({ booting: "Starting sandbox…" });
-  try {
-    const r = await fetch("/api/sandbox/start", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ width, height, dpi }),
-    });
-    const d = await r.json();
-    if (!r.ok) throw new Error(d.error || "the sandbox did not start");
-    set({ serial: d.serial });
-    await loadDevices();
-    // A fresh container has no apps installed at all, so the old device's list
-    // is not merely stale — it is wrong.
-    await loadTargets();
-    return d;
-  } finally {
-    set({ booting: null });
-  }
+  return bootDevice("/api/sandbox/start", { width, height, dpi }, "Starting sandbox…");
 }
 
 /* Fix the host's binder/Docker prerequisites through the desktop's own password

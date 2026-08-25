@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import Logo from "../lib/Logo.jsx";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { Home, Live, List, Bug, Bars, Bolt, Stop, LogOut, Chevron, Check, Screens, Book, Wrench } from "../lib/icons.jsx";
+import { Home, Live, List, Bug, Bolt, Doc, Stop, LogOut, Chevron, Check, Screens, Book, Wrench } from "../lib/icons.jsx";
 import { useStore } from "../lib/useStore.js";
 import { loadState, connectWS, startRun, stopRun, loadTargets, selectTarget,
   loadDevices, selectDevice, startEmulator, stopEmulator,
@@ -9,7 +9,7 @@ import { loadState, connectWS, startRun, stopRun, loadTargets, selectTarget,
 import { getUser, signOut, initials } from "../lib/auth.js";
 import { formatDuration } from "../lib/notify.js";
 
-const TITLES = { "/app": "Overview", "/app/live": "Live run", "/app/trace": "Trace", "/app/bugs": "Bugs", "/app/benchmark": "Benchmark", "/app/setup": "Setup", "/app/settings": "Settings" };
+const TITLES = { "/app": "Overview", "/app/live": "Live run", "/app/trace": "Trace", "/app/bugs": "Bugs", "/app/setup": "Setup", "/app/settings": "Settings" };
 
 export default function Console() {
   const st = useStore();
@@ -72,10 +72,12 @@ export default function Console() {
         {link("/app/live", <Live />, "Live run", <span className={"pulse " + runState} style={{ marginLeft: "auto" }} />)}
         {link("/app/trace", <List />, "Trace", <span className="count">{steps}</span>)}
         {link("/app/bugs", <Bug />, "Bugs", <span className="count">{bugs}</span>)}
-        <div className="nav-label">Evidence</div>
-        {link("/app/benchmark", <Bars />, "Benchmark")}
         <div className="nav-label">Configure</div>
         {link("/app/settings", <Wrench />, "Settings")}
+        <div className="nav-label">Evidence</div>
+        <a className="nav-item" href="/#proof" target="_blank" rel="noreferrer">
+          <Doc /><span>Benchmark</span>
+        </a>
         <div className="nav-label">Help</div>
         {link("/app/setup", <Book />, "Setup")}
 
@@ -155,8 +157,8 @@ function DevicePicker({ st, disabled, onNotify }) {
     setOpen(false);
     onNotify(`Booting ${avd} — a cold start takes a minute…`, 60000);
     try {
-      const d = await startEmulator(avd);
-      onNotify(`Emulator ready: ${d.serial}`);
+      await startEmulator(avd);
+      onNotify(`Emulator ${avd} is ready.`);
     } catch (e) {
       onNotify(`Emulator did not start: ${e.message}`, 12000);
     }
@@ -168,8 +170,8 @@ function DevicePicker({ st, disabled, onNotify }) {
       ? "Starting the sandbox — the first start downloads the image, so give it a few minutes…"
       : "Starting the sandbox — about a minute…", 300000);
     try {
-      const d = await startSandbox();
-      onNotify(`Sandbox ready: ${d.serial} at ${d.width}x${d.height}`);
+      await startSandbox();
+      onNotify("Sandbox ready — fresh Android, no phone involved.");
     } catch (e) {
       onNotify(`Sandbox did not start: ${e.message}`, 15000);
     }

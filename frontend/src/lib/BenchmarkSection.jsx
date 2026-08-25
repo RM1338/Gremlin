@@ -1,90 +1,101 @@
 import { useEffect, useRef } from "react";
-import Mascot from "../lib/Mascot.jsx";
-import { useStore } from "../lib/useStore.js";
-import { evalArms } from "../lib/store.js";
+import { useStore } from "./useStore.js";
+import { evalArms, loadState } from "./store.js";
 
-// Two questions live on this page, and they are not the same question.
-//
-//   1. Does a reasoning agent beat random tapping?   gremlin-vision vs monkey
-//   2. Is the *vision model* what does the work?     gremlin-vision vs
-//                                                    gremlin-coverage (no model)
-//
-// The second is the ablation (docs/KNOWN_ISSUES.md, G4) and is the one that
-// decides whether the model earns its place. It only renders once that arm has
-// actually been run, so the page never implies a result that was not measured.
+/* The benchmark, as a landing-page section rather than a console page.
+ *
+ * It used to live behind sign-in, on a fixed-height console page that does not
+ * scroll — where a per-defect table and a per-seed table had nowhere to go and
+ * overlapped everything under them. It also hid the one thing a reader most
+ * wants before trying the tool. A scrolling marketing page has room for both
+ * tables and an audience for them, so the page moved rather than the layout
+ * being fought.
+ *
+ * Two questions live here, and they are not the same question:
+ *   1. Does a reasoning agent beat random tapping?  vision vs monkey
+ *   2. Is the *vision model* what does the work?    vision vs coverage-only
+ * The second is the ablation (docs/KNOWN_ISSUES.md, G4) and is the one that
+ * decides whether the model earns its place. It renders only once that arm has
+ * been run, so the page never implies a result nobody measured.
+ */
+
 const SERIES = {
   vision: { name: "Gremlin", sub: "vision model + coverage", color: "var(--series-gremlin)" },
   coverage: { name: "Gremlin, no model", sub: "coverage + a11y grounding only", color: "var(--brand-2)" },
   monkey: { name: "Monkey", sub: "random taps", color: "var(--series-monkey)" },
 };
 
-export default function Benchmark() {
+export default function BenchmarkSection() {
   const st = useStore();
-  const arms = evalArms(st.evalData);
-  const data = st.evalData || {};
-  const isDemo = data.demo === true;
-  // Present only on schema 2 — the shape that reports several seeds per arm
-  // rather than one. Everything keyed off these degrades to the old single-
-  // sample rendering rather than inventing a spread that was never measured.
-  const proto = data.schema >= 2 ? data.protocol : null;
-  const env = data.schema >= 2 ? data.device : null;
-  const rates = data.schema >= 2 ? data.detection_rates : null;
-  const rootRef = useRef(null);
+  const ref = useRef(null);
+
+  // The landing page is reachable without the console ever having loaded, so it
+  // fetches its own data. loadState falls back to a bundled sample-state.json on
+  // a static deploy where there is no backend at all.
+  useEffect(() => { if (!st.evalData) loadState(); }, []);
   useEffect(() => {
-    const id = requestAnimationFrame(() => {
-      rootRef.current?.querySelectorAll(".bar-fill").forEach((b) => (b.style.width = b.dataset.w));
-    });
+    const id = requestAnimationFrame(() =>
+      ref.current?.querySelectorAll(".bar-fill").forEach((b) => (b.style.width = b.dataset.w)));
     return () => cancelAnimationFrame(id);
   });
 
+  const data = st.evalData || {};
+  const arms = evalArms(data);
+  const isDemo = data.demo === true;
+  const proto = data.schema >= 2 ? data.protocol : null;
+  const env = data.schema >= 2 ? data.device : null;
+  const rates = data.schema >= 2 ? data.detection_rates : null;
   const present = arms ? ["vision", "coverage", "monkey"].filter((k) => arms[k]) : [];
   const g = arms?.vision, c = arms?.coverage, m = arms?.monkey;
 
   return (
-    <div ref={rootRef} className="page-root">
-      <div className="page-head" style={{ display: "flex", alignItems: "center", gap: 18 }}>
-        <Mascot size={112} state="measure" />
-        <div style={{ flex: 1 }}>
-        <h1 className="page-title">Benchmark</h1>
-        <p className="page-desc">
-          Equal action budget, same cold start. Coverage is distinct screens reached,
-          deduplicated by perceptual hash.
+    <section className="section" id="proof" ref={ref}>
+      <h2 className="section-title">Measured, not asserted</h2>
+      <p className="section-lede">
+        Three arms, one action budget, the same cold start &mdash; so the model&rsquo;s contribution is a
+        number rather than a claim.
+      </p>
+
+      <div className="proof-box">
+        <ul>
+          <li><b>Android&rsquo;s Monkey</b> &mdash; random taps, the standard baseline.</li>
+          <li><b>Gremlin without the model</b> &mdash; accessibility grounding and coverage memory only.</li>
+          <li><b>Gremlin</b> &mdash; the full agent.</li>
+        </ul>
+        <p>
+          The second arm is the honest one: it isolates what the vision model actually contributes,
+          rather than crediting it for what the coverage bookkeeping does.
         </p>
-        </div>
       </div>
 
-      <div className="page-body">
-      {isDemo && (
-        <div className="pill" style={{ marginBottom: 18, color: "var(--layout)", borderColor: "var(--layout)" }}>
-          Demo data — not a measured result
-        </div>
-      )}
-
-      {env && (
-        <div className="bench-env">
-          {[["App", `${data.app?.package || "—"}${data.app?.commit ? ` @ ${data.app.commit}` : ""}`],
-            ["Device", `${env.kind}${env.model ? ` · ${env.model}` : ""}${env.width ? ` · ${env.width}×${env.height}` : ""}`],
-            ["Android", env.android ? `${env.android} (API ${env.sdk})` : "—"],
-            ["Vision model", data.vision_model?.model || data.vision_model?.provider || "—"],
-            ["Budget", `${proto?.actions} actions × ${proto?.repeats} seeds`],
-            ["Measured", (data.generated_at || "").replace("T", " ").slice(0, 16)]].map(([k, v]) => (
-            <div className="bench-env-cell" key={k}><span className="k">{k}</span><span className="v">{v}</span></div>
-          ))}
-        </div>
-      )}
-
       {!g ? (
-        <div className="empty-state">
-          <div className="icon"><Mascot size={132} state="measure" /></div>
-          <h3>No benchmark yet</h3>
-          <p>
-            Run <code>python -m gremlin.eval --project &lt;app&gt; --coverage-only --monkey</code> to
-            compare the agent against random tapping, and against itself with the model removed.
-          </p>
+        <div className="proof-pending">
+          Results are pending. The numbers appear here once the ablation has run over enough seeds
+          to report a spread.
         </div>
       ) : (
         <>
-          <div className="bench-grid">
+          {isDemo && (
+            <div className="proof-demo">
+              Demo data &mdash; not a measured result. This is what the section renders once a real
+              benchmark has been run.
+            </div>
+          )}
+
+          {env && (
+            <div className="bench-env">
+              {[["App", `${data.app?.package || "—"}${data.app?.commit ? ` @ ${data.app.commit}` : ""}`],
+                ["Device", `${env.kind}${env.width ? ` · ${env.width}×${env.height}` : ""}`],
+                ["Android", env.android ? `${env.android} (API ${env.sdk})` : "—"],
+                ["Vision model", data.vision_model?.model || data.vision_model?.provider || "—"],
+                ["Budget", `${proto?.actions} actions × ${proto?.repeats} seeds`],
+                ["Measured", (data.generated_at || "").replace("T", " ").slice(0, 16)]].map(([k, v]) => (
+                <div className="bench-env-cell" key={k}><span className="k">{k}</span><span className="v">{v}</span></div>
+              ))}
+            </div>
+          )}
+
+          <div className="bench-cards">
             <div className="card chart">
               <div className="chart-title">Distinct screens reached</div>
               <div className="chart-sub">{g.actions} actions each · higher is better</div>
@@ -98,11 +109,11 @@ export default function Benchmark() {
               </div>
               <p className="note" style={{ margin: "14px 0 0", fontSize: 12 }}>
                 {proto
-                  ? <>Each arm run {proto.repeats}× (seeds {proto.seeds?.[0]}–{proto.seeds?.[proto.seeds.length - 1]}),
-                      bars show the mean and the whisker one standard deviation.
+                  ? <>Each arm run {proto.repeats}× (seeds {proto.seeds?.[0]}&ndash;{proto.seeds?.[proto.seeds.length - 1]});
+                      the whisker is one standard deviation.
                       {g.failed ? ` ${g.failed} run(s) failed and are excluded — n is what was measured.` : ""}</>
                   : <>One run is one sample. A result worth citing needs several seeds and a reported
-                      spread — re-run with <code>--repeats 5</code> and this page will show it.</>}
+                      spread — re-run with <code>--repeats 5</code>.</>}
               </p>
               <div className="legend">
                 {present.map((k) => (
@@ -123,7 +134,7 @@ export default function Benchmark() {
                   <div className="lbl">more screens than random</div>
                   <p>
                     The monkey pounds the same first screen. Gremlin tracks which controls it has
-                    already tapped and works through the ones it hasn't.
+                    already tapped and works through the ones it hasn&rsquo;t.
                   </p>
                 </div>
               )}
@@ -135,47 +146,36 @@ export default function Benchmark() {
                     The same engine with the vision model removed — accessibility grounding and
                     coverage memory only.
                   </p>
-                  <KV k="Screens, with model" v={g.distinct_screens} />
-                  <KV k="Screens, without" v={c.distinct_screens} />
+                  <KV k="Screens, with model" v={fmt(g.distinct_screens, g.sd?.screens)} />
+                  <KV k="Screens, without" v={fmt(c.distinct_screens, c.sd?.screens)} />
                   <KV k="Difference" v={fmtDelta(g.distinct_screens - c.distinct_screens)} />
                   {g.duration_sec != null && c.duration_sec != null && (
                     <KV k="Time cost of the model" v={`${(g.duration_sec - c.duration_sec).toFixed(0)}s`} />
                   )}
                 </div>
               )}
-
-              <div className="card">
-                <div className="chart-title" style={{ marginBottom: 12 }}>All arms</div>
-                {present.map((k) => (
-                  <KV key={k} k={SERIES[k].name}
-                      v={fmtArm(arms[k])} />
-                ))}
-              </div>
             </div>
           </div>
 
           {rates && Object.keys(rates).length > 0 && (
-            <div className="card" style={{ marginTop: 18 }}>
+            <div className="card bench-wide">
               <div className="chart-title">Per-defect detection rate</div>
               <div className="chart-sub">
                 How many seeds each arm found each defect in. A defect found in one seed of five is
-                luck; one found in five of five is a capability — and a mean bug count cannot tell
+                luck; one found in five of five is a capability &mdash; and a mean bug count cannot tell
                 them apart.
               </div>
               <div className="bench-table-wrap">
                 <table className="bench-table">
                   <thead>
-                    <tr>
-                      <th>Defect</th>
-                      {present.map((k) => <th key={k}>{SERIES[k].name}</th>)}
-                    </tr>
+                    <tr><th>Defect</th>{present.map((k) => <th key={k}>{SERIES[k].name}</th>)}</tr>
                   </thead>
                   <tbody>
                     {Object.entries(rates).map(([key, row]) => (
                       <tr key={key}>
                         <td className="defect">{key}</td>
                         {present.map((k) => {
-                          const cell = row[armKey(k, arms)] || { found_in: 0, of: 0 };
+                          const cell = row[arms[k]?.explorer] || { found_in: 0, of: 0 };
                           const pct = cell.of ? cell.found_in / cell.of : 0;
                           return (
                             <td key={k}>
@@ -194,12 +194,8 @@ export default function Benchmark() {
           )}
 
           {proto && (
-            <div className="card" style={{ marginTop: 18 }}>
-              <div className="chart-title">Every run</div>
-              <div className="chart-sub">
-                The individual samples behind the means above. Spread is the finding, not noise to
-                be averaged away.
-              </div>
+            <details className="bench-runs">
+              <summary>Every individual run ({present.reduce((n, k) => n + (arms[k].runs?.length || 0), 0)} samples)</summary>
               <div className="bench-table-wrap">
                 <table className="bench-table">
                   <thead>
@@ -219,35 +215,25 @@ export default function Benchmark() {
                   </tbody>
                 </table>
               </div>
-            </div>
+            </details>
           )}
-
         </>
       )}
-      </div>
-    </div>
+    </section>
   );
 }
 
-/* Which key this arm has in the detection table — the table is keyed by the
-   explorer name the harness wrote, not by the UI's short role name. */
-function armKey(role, arms) { return arms[role]?.explorer; }
-
-function fmtArm(a) {
-  const s = a.sd?.screens != null ? `${a.distinct_screens} ± ${a.sd.screens}` : a.distinct_screens;
-  const b = a.sd?.bugs != null ? `${a.distinct_bugs} ± ${a.sd.bugs}` : a.distinct_bugs;
-  return `${s} screens · ${b} bugs${a.n ? ` · n=${a.n}` : ""}`;
-}
+function fmt(v, sd) { return sd != null && sd > 0 ? `${v} ± ${sd}` : `${v}`; }
 
 function fmtDelta(n) {
   if (n === 0) return "none — the model changed nothing";
-  return n > 0 ? `+${n} screens with the model` : `${n} screens with the model`;
+  return n > 0 ? `+${n.toFixed(1)} screens with the model` : `${n.toFixed(1)} screens with the model`;
 }
 
 function BarRow({ name, val, max, color, sd, n }) {
   const pct = Math.max(4, (val / max) * 100);
-  // One standard deviation each way, drawn on the same scale as the bar. Absent
-  // when there is only one sample, because there is nothing to draw.
+  // One standard deviation each way, on the bar's own scale. Absent when there
+  // is a single sample, because there is nothing to draw.
   const err = sd != null && sd > 0 ? (sd / max) * 100 : 0;
   return (
     <div className="bar-row">
