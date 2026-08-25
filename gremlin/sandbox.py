@@ -91,12 +91,15 @@ class SandboxStatus:
             return ("Docker is installed but its daemon is not reachable. Start it "
                     "with: sudo systemctl start docker")
         if self.binder == "no-module":
-            # One command, and it survives until reboot.
+            # Deliberately no longer a command to paste. The console can do this
+            # itself (see `setup()`), and on macOS/Windows no command exists —
+            # binder is a Linux kernel feature, so those users need the emulator
+            # instructions on the Setup page instead of a line that cannot work.
             return ("The kernel's binder driver is not loaded — Android's IPC "
-                    "cannot work without it. Load it with: "
-                    'sudo modprobe binder_linux devices="binder,hwbinder,vndbinder" '
-                    "(On macOS and Windows there is no binder at all — use a "
-                    "phone or an emulator.)")
+                    "cannot work without it. Gremlin can set this up for you. "
+                    "On macOS and Windows there is no binder at all: use a phone "
+                    "or an emulator — the Setup page has step-by-step "
+                    "instructions for both.")
         if self.binder == "no-devices":
             # The trap: `modprobe binder_linux` on its own looks like it worked
             # and leaves nothing behind, because distro kernels ship
@@ -107,8 +110,7 @@ class SandboxStatus:
             return ("binder_linux is loaded but exposes no devices — the kernel "
                     'ships CONFIG_ANDROID_BINDER_DEVICES="" and binderfs is not '
                     "mounted, so there is no binder node for Android to use. "
-                    "Mount binderfs: sudo mkdir -p /dev/binderfs && "
-                    "sudo mount -t binder binder /dev/binderfs")
+                    "Gremlin can mount it for you.")
         return None
 
     @property
@@ -133,6 +135,49 @@ def status() -> SandboxStatus:
             container = out.stdout.strip() if out.returncode == 0 else None
     return SandboxStatus(docker=have_docker, daemon=daemon, binder=binder_state(),
                          image=image, container=container)
+
+
+SETUP_SCRIPT = Path(__file__).resolve().parent.parent / "scripts" / "sandbox-setup.sh"
+
+
+def can_self_setup() -> bool:
+    """True when the console can fix the prerequisites without a terminal.
+
+    pkexec asks for the password in the desktop's own dialog, which is the whole
+    point — the user clicks a button instead of being handed a modprobe command.
+    It needs a polkit agent, so this is false over SSH and on a headless box,
+    and there the UI falls back to showing the command.
+    """
+    return (SETUP_SCRIPT.exists() and shutil.which("pkexec") is not None
+            and bool(os.environ.get("DISPLAY") or os.environ.get("WAYLAND_DISPLAY")))
+
+
+def setup(timeout: float = 300.0) -> str:
+    """Run the one-time host setup as root, via a graphical password prompt.
+
+    Returns what it did. Raises RuntimeError with the script's own message when
+    it could not — every one of those is a real environment problem (no binder in
+    this kernel, no Docker) that no amount of retrying fixes.
+    """
+    if not SETUP_SCRIPT.exists():
+        raise RuntimeError(f"the setup script is missing at {SETUP_SCRIPT}")
+    if shutil.which("pkexec") is None:
+        raise RuntimeError(
+            f"pkexec is not installed, so the password prompt cannot be shown. "
+            f"Run it yourself: sudo {SETUP_SCRIPT}")
+    try:
+        out = subprocess.run(["pkexec", str(SETUP_SCRIPT)],
+                             capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired as e:
+        raise RuntimeError("the setup prompt timed out") from e
+    if out.returncode == 126:
+        # polkit's own code for "the user dismissed the dialog". Not a failure
+        # worth a red banner — they said no.
+        raise RuntimeError("cancelled — the password prompt was dismissed")
+    if out.returncode != 0:
+        detail = (out.stderr or out.stdout).strip() or f"exit {out.returncode}"
+        raise RuntimeError(detail[:600])
+    return out.stdout.strip()
 
 
 def is_sandbox(serial: str | None) -> bool:
@@ -218,6 +263,42 @@ def stop() -> None:
     """Remove the container and detach adb. Safe when nothing is running."""
     subprocess.run(["adb", "disconnect", SERIAL], capture_output=True, timeout=30)
     _docker("rm", "-f", CONTAINER, timeout=60)
+
+
+def ensure_installed(cfg, on_status=None) -> None:
+    """Put the app in the sandbox, because a container starts with no apps in it.
+
+    Sandbox only, and that restriction is the whole safety argument: a container
+    is guaranteed fresh, so a missing package there means "not installed yet".
+    On a phone or an emulator it more likely means the target is wrong, and
+    building someone's project uninvited is not the answer to that.
+
+    Raises RuntimeError with something worth reading; the caller decides whether
+    that becomes a `sys.exit` or a line in the browser.
+    """
+    from .device import Device
+    from . import platforms
+
+    say = on_status or (lambda _m: None)
+    if cfg.package in Device(cfg.serial).list_third_party_packages():
+        return
+    root = Path(cfg.scribe_root)
+    if not (root / "android").is_dir():
+        raise RuntimeError(
+            f"{cfg.package} is not installed in the sandbox, and there is no app "
+            f"project at {root} to build it from. "
+            f"Install it yourself: adb -s {cfg.serial} install -r <apk>")
+    say(f"{cfg.package} is not in the sandbox \u2014 building {root.name}\u2026")
+    try:
+        apk = platforms.by_name(cfg.platform).build(root)
+        say(f"installing {apk.name} into the sandbox\u2026")
+        subprocess.run(["adb", "-s", cfg.serial, "install", "-r", str(apk)],
+                       check=True, timeout=600)
+    except (subprocess.CalledProcessError, subprocess.TimeoutExpired,
+            FileNotFoundError) as e:
+        raise RuntimeError(
+            f"could not install {cfg.package} into the sandbox: {e}") from e
+    say(f"installed {cfg.package} into {cfg.serial}")
 
 
 def _connect(deadline: float) -> None:

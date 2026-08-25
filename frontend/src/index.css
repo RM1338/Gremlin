@@ -42,6 +42,12 @@ h1, h2, h3, h4, h5 { font-weight: 600; letter-spacing: -.04em; }
 a { color: inherit; text-decoration: none; }
 button { font-family: inherit; }
 ::selection { background: color-mix(in srgb, var(--ink) 26%, transparent); }
+/* Firefox ignores ::-webkit-scrollbar entirely, so without the standard
+   properties every scrollable panel — the action stream, the nav, the tables —
+   fell back to the OS default: a heavy bar spanning the panel. Chrome ignores
+   these in favour of the webkit rules below, so both engines get the same
+   hairline. Both are inherited, so :root is enough. */
+:root { scrollbar-width: thin; scrollbar-color: var(--hair) transparent; }
 ::-webkit-scrollbar { width: 10px; height: 10px; }
 ::-webkit-scrollbar-thumb { background: var(--hair); border-radius: 20px; border: 2px solid transparent; background-clip: padding-box; }
 
@@ -276,7 +282,13 @@ button { font-family: inherit; }
 
 /* Decorative status dot. The "live" halo uses an animated box-shadow (not a
    scaling pseudo-element) so it never adds to a container's scroll width. */
-.pulse { width: 9px; height: 9px; border-radius: 50%; position: relative; flex: none; }
+/* `flex: none` alone was not enough in the wild: reported stretched to the full
+   row width in Firefox, where a 9px circle becomes a long tapered lens and
+   pushes its label to the far end. Not reproducible in Chrome, so this is belt
+   and braces — an explicit basis plus hard min/max means no engine, and no
+   injected stylesheet, can size it along either axis. */
+.pulse { width: 9px; height: 9px; min-width: 9px; max-width: 9px; min-height: 9px;
+  flex: 0 0 9px; aspect-ratio: 1; border-radius: 50%; position: relative; }
 .pulse.idle { background: var(--faint); } .pulse.live { background: var(--brand); } .pulse.done { background: var(--hang); }
 .pulse.live { animation: pulsehalo 1.6s var(--ease-out) infinite; }
 @keyframes pulsehalo {
@@ -320,6 +332,11 @@ button { font-family: inherit; }
 .tp-tag { font: 600 9px var(--mono); letter-spacing: .04em; text-transform: uppercase; color: var(--muted); flex: none;
   border: 1px solid var(--hair); border-radius: 20px; padding: 2px 7px; }
 .tp-none { padding: 16px 10px; color: var(--muted); font-size: 13px; text-align: center; }
+/* The fallback when the console cannot run the setup itself (over SSH, no
+   polkit): the command, selectable, so it is copied rather than retyped. */
+.tp-cmd { margin-top: 10px; padding: 8px 10px; border-radius: 7px; background: var(--surface-2);
+  border: 1px solid var(--hair); font: 11.5px/1.5 var(--mono); color: var(--ink-dim);
+  user-select: all; text-align: left; word-break: break-all; }
 
 /* The console is a fixed-height app shell: the page itself never scrolls, so
    the sidebar, the top bar and every page header stay put. Where a page has
@@ -400,13 +417,13 @@ button { font-family: inherit; }
    a tall one it gets generous — the page fills either way without scrolling. */
 .ov-screens { display: flex; flex-direction: column; flex: 1; min-height: 0; margin-top: 10px; }
 .ov-strip { display: flex; gap: 10px; flex: 1; min-height: 0; overflow: hidden; margin-top: 10px; }
-.ov-shot { height: 100%; aspect-ratio: 1080/2340; flex: none; border-radius: 10px; overflow: hidden;
+.ov-shot { height: 100%; aspect-ratio: var(--shot-aspect, 1080/2340); flex: none; border-radius: 10px; overflow: hidden;
   background: #05070a; border: 1px solid var(--hair); cursor: zoom-in;
   transition: border-color .15s; }
 /* The frames are clickable so they keep a cue, but it is a border change, not
    a lift — the panels around them do not move under the pointer. */
 .ov-shot:hover { border-color: var(--brand); }
-.ov-shot img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ov-shot img { width: 100%; height: 100%; object-fit: contain; display: block; }
 
 /* Short screens: tighten chrome, not content. Now that the cards size to what
    is in them they no longer silently squash to fit, so the last few px have to
@@ -462,11 +479,11 @@ button { font-family: inherit; }
 /* Sized from the height it is given, capped so it can never be wider than its
    column — an unbounded width is what cut the screen in half. */
 .phone { position: relative; margin: 0 auto; max-height: 100%; max-width: 100%;
-  height: min(100%, 823px); width: auto; aspect-ratio: 1080/2340; border-radius: 30px; padding: 9px;
+  height: min(100%, 823px); width: auto; aspect-ratio: var(--shot-aspect, 1080/2340); border-radius: 30px; padding: 9px;
   background: #14171d; box-shadow: var(--shadow-lg), inset 0 0 0 1px rgba(255,255,255,.04); }
 .phone::before { content: ""; position: absolute; top: 14px; left: 50%; transform: translateX(-50%); width: 90px; height: 7px; border-radius: 10px; background: #000; opacity: .6; z-index: 2; }
 .phone-screen { width: 100%; height: 100%; border-radius: 24px; overflow: hidden; background: #05070a; display: grid; place-items: center; }
-.phone-screen img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.phone-screen img { width: 100%; height: 100%; object-fit: contain; display: block; }
 .phone-empty { color: var(--faint); font: 12px var(--mono); text-align: center; padding: 20px; }
 .spinner { width: 26px; height: 26px; border-radius: 50%; border: 2.5px solid var(--hair); border-top-color: var(--brand); animation: spin .8s linear infinite; margin: 0 auto 14px; }
 @keyframes spin { to { transform: rotate(360deg); } }
@@ -567,8 +584,8 @@ button { font-family: inherit; }
 .bug-step { font: 11px var(--mono); color: var(--muted); text-align: right; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bug-title { font: 13px var(--mono); margin-top: 12px; color: var(--ink); word-break: break-word; line-height: 1.5; }
 .bug-loc { font: 12px var(--mono); color: var(--muted); margin-top: 8px; word-break: break-all; } .bug-loc b { color: var(--ink-dim); }
-.bug-shot { width: 108px; aspect-ratio: 1080/2340; margin-top: 16px; border-radius: 9px; overflow: hidden; background: #05070a; border: 1px solid var(--hair); }
-.bug-shot img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.bug-shot { width: 108px; aspect-ratio: var(--shot-aspect, 1080/2340); margin-top: 16px; border-radius: 9px; overflow: hidden; background: #05070a; border: 1px solid var(--hair); }
+.bug-shot img { width: 100%; height: 100%; object-fit: contain; display: block; }
 
 .tier-col { padding: 16px 20px 20px; min-width: 0; }
 .tier-tabs { display: inline-flex; gap: 3px; padding: 3px; background: var(--surface-2); border: 1px solid var(--hair); border-radius: 11px; max-width: 100%; }
@@ -616,6 +633,10 @@ button { font-family: inherit; }
   border: 1px solid color-mix(in srgb, var(--brand) 34%, var(--hair)); background: color-mix(in srgb, var(--brand) 7%, var(--surface-1));
   font: 500 12.5px var(--sans); color: var(--ink-dim); }
 .fix-progress .spin { width: 14px; height: 14px; flex: none; border-radius: 50%; border: 2px solid var(--hair); border-top-color: var(--brand); animation: spin .8s linear infinite; }
+.fix-merged { display: flex; align-items: center; gap: 9px; margin-top: 14px; padding: 11px 14px; border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--brand) 40%, var(--hair));
+  background: color-mix(in srgb, var(--brand) 8%, var(--surface-1)); font: 12.5px/1.5 var(--sans); color: var(--ink-dim); }
+.fix-merged svg { width: 15px; height: 15px; color: var(--brand); flex: none; }
 .fix-error { margin-top: 14px; padding: 11px 14px; border-radius: 8px; border: 1px solid color-mix(in srgb, var(--crash) 40%, var(--hair));
   background: color-mix(in srgb, var(--crash) 7%, var(--surface-1)); font: 12.5px/1.5 var(--sans); color: var(--crash);
   white-space: pre-line; overflow-x: auto; }
@@ -655,8 +676,8 @@ button { font-family: inherit; }
 .tl-row { display: grid; grid-template-columns: 78px 1fr; gap: 15px; align-items: center; border: 1px solid var(--hair); border-radius: var(--r-md); background: var(--surface-1); padding: 12px; transition: border-color .15s, background .15s; }
 .tl-row:hover { border-color: color-mix(in srgb, var(--brand) 32%, var(--hair)); background: var(--surface-2); }
 .tl-row { padding: 11px 13px; }
-.tl-thumb { width: 78px; aspect-ratio: 1080/1800; border-radius: 7px; overflow: hidden; background: #05070a; border: 1px solid var(--hair); }
-.tl-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.tl-thumb { width: 78px; aspect-ratio: var(--shot-aspect, 1080/1800); border-radius: 7px; overflow: hidden; background: #05070a; border: 1px solid var(--hair); }
+.tl-thumb img { width: 100%; height: 100%; object-fit: contain; }
 .tl-thumb.zoomable, .bug-shot.zoomable { cursor: zoom-in; transition: border-color .15s, transform .15s var(--ease-out); }
 .tl-thumb.zoomable:hover, .bug-shot.zoomable:hover { border-color: var(--brand); transform: scale(1.03); }
 .tl-main { min-width: 0; }
@@ -681,6 +702,35 @@ button { font-family: inherit; }
    everything that reads off it stacks down the narrow one, so the two columns
    come out roughly level instead of one tall card beside a short orphan.
    align-items:start keeps each card as tall as what is in it. */
+/* Benchmark provenance strip: what the number was measured on. A benchmark
+   without its environment is a rumour, and screen geometry in particular changes
+   the layout-defect count outright. */
+.bench-env { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1px;
+  background: var(--hair); border: 1px solid var(--hair); border-radius: var(--r-md);
+  overflow: hidden; margin-bottom: 18px; }
+.bench-env-cell { background: var(--surface-1); padding: 10px 13px; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.bench-env-cell .k { font: 10.5px var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.bench-env-cell .v { font: 12.5px var(--mono); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* Per-defect and per-seed tables. Wide content scrolls in its own box so the
+   page itself never scrolls sideways. */
+.bench-table-wrap { overflow-x: auto; margin-top: 14px; }
+.bench-table { width: 100%; border-collapse: collapse; font: 12px var(--mono); }
+.bench-table th { text-align: left; font: 500 10.5px var(--mono); color: var(--muted);
+  text-transform: uppercase; letter-spacing: .06em; padding: 0 12px 8px 0; white-space: nowrap; }
+.bench-table td { padding: 7px 12px 7px 0; border-top: 1px solid var(--hair); color: var(--ink-dim); white-space: nowrap; }
+.bench-table td.defect { color: var(--ink); max-width: 320px; overflow: hidden; text-overflow: ellipsis; }
+.rate { display: inline-block; padding: 1px 7px; border-radius: 5px; background: var(--surface-2);
+  border: 1px solid var(--hair); }
+.rate.full { color: var(--brand); border-color: color-mix(in srgb, var(--brand) 40%, var(--hair)); }
+.rate.none { color: var(--muted); }
+
+/* One standard deviation each way, on the bar's own scale. */
+.bar-err { position: absolute; top: 50%; height: 9px; transform: translateY(-50%);
+  border-left: 1.5px solid var(--ink-dim); border-right: 1.5px solid var(--ink-dim); }
+.bar-err::before { content: ""; position: absolute; top: 50%; left: 0; right: 0;
+  border-top: 1.5px solid var(--ink-dim); }
+
 .bench-grid { display: grid; grid-template-columns: 1.45fr 1fr; gap: 12px;
   flex: 1; min-height: 0; align-items: start; align-content: start; }
 @media (max-width: 900px){ .bench-grid { grid-template-columns: 1fr; } }
@@ -707,7 +757,7 @@ button { font-family: inherit; }
 .bars { display: flex; flex-direction: column; gap: 11px; }
 .bar-row { display: grid; grid-template-columns: 96px 1fr 40px; gap: 13px; align-items: center; }
 .bar-name { font: 600 13px var(--mono); display: flex; align-items: center; gap: 8px; } .bar-name .swatch { width: 10px; height: 10px; border-radius: 3px; }
-.bar-track { height: 22px; background: var(--surface-3); border-radius: 7px; overflow: hidden; }
+.bar-track { height: 22px; background: var(--surface-3); border-radius: 7px; overflow: hidden; position: relative; }
 .bar-fill { height: 100%; border-radius: 7px; width: 0; transition: width 1s var(--ease-out); }
 .bar-val { font: 700 15px var(--mono); text-align: right; font-variant-numeric: tabular-nums; }
 .legend { display: flex; gap: 8px 20px; margin-top: 12px; padding-top: 11px; border-top: 1px solid var(--hair); flex-wrap: wrap; }
@@ -717,6 +767,21 @@ button { font-family: inherit; }
 .kv { display: flex; justify-content: space-between; padding: 8px 0; border-top: 1px solid var(--hair); }
 
 /* Setup guide */
+/* Track chooser. Three different guides, not one guide with asides — a Mac user
+   must never be reading the binder instructions. */
+.setup-tracks { display: flex; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+.setup-track { display: flex; flex-direction: column; gap: 3px; align-items: flex-start; text-align: left;
+  padding: 10px 14px; border-radius: 10px; border: 1px solid var(--hair); background: var(--surface-1);
+  cursor: pointer; transition: border-color .15s, background .15s; }
+.setup-track:hover { border-color: color-mix(in srgb, var(--brand) 32%, var(--hair)); }
+.setup-track.active { border-color: var(--brand); background: color-mix(in srgb, var(--brand) 8%, var(--surface-1)); }
+.setup-track-l { font: 500 13px var(--sans); color: var(--ink); }
+.setup-track-s { font: 11px var(--mono); color: var(--muted); }
+/* Per-OS subheads inside a step. */
+.setup-content h4 { margin: 16px 0 6px; font: 600 12.5px var(--sans); color: var(--ink);
+  letter-spacing: -.01em; }
+.setup-content h4:first-child { margin-top: 0; }
+
 .setup-callout { border: 1px solid color-mix(in srgb, var(--brand) 26%, var(--hair));
   background: color-mix(in srgb, var(--brand) 7%, var(--surface-1)); border-radius: var(--r-lg); padding: 12px 16px; margin-bottom: 14px; flex: none; }
 .setup-callout .note { font-size: 13px; margin: 0; }

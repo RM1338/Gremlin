@@ -5,7 +5,7 @@ import { Home, Live, List, Bug, Bars, Bolt, Stop, LogOut, Chevron, Check, Screen
 import { useStore } from "../lib/useStore.js";
 import { loadState, connectWS, startRun, stopRun, loadTargets, selectTarget,
   loadDevices, selectDevice, startEmulator, stopEmulator,
-  startSandbox, stopSandbox } from "../lib/store.js";
+  startSandbox, stopSandbox, setupSandbox } from "../lib/store.js";
 import { getUser, signOut, initials } from "../lib/auth.js";
 import { formatDuration } from "../lib/notify.js";
 
@@ -83,7 +83,7 @@ export default function Console() {
           <div className="status-chip">
             <span className={"pulse " + runState} />
             <span className="label">{st.running ? "Running…" : st.done ? "Run complete" : "Idle"}</span>
-            <span className="val">{st.package}</span>
+            <span className="val">{st.selected?.package || st.package || "no app selected"}</span>
           </div>
           <div className="side-user">
             <div className="avatar">{initials(user)}</div>
@@ -175,6 +175,19 @@ function DevicePicker({ st, disabled, onNotify }) {
     }
   }
 
+  async function fixSandbox() {
+    setOpen(false);
+    onNotify("Authorise the setup in your desktop's password dialog…", 120000);
+    try {
+      const d = await setupSandbox();
+      onNotify(d.can_start
+        ? "Host is set up — the sandbox can start now, and after a reboot too."
+        : `Setup ran, but the sandbox still cannot start: ${d.problem}`, 12000);
+    } catch (e) {
+      onNotify(e.message, 15000);
+    }
+  }
+
   async function shutdownSandbox() {
     setOpen(false);
     await stopSandbox();
@@ -230,8 +243,23 @@ function DevicePicker({ st, disabled, onNotify }) {
                   <div className="tp-item-pkg">{sandbox.note || "no phone needed · fresh every start"}</div>
                 </div>
               </div>
+            ) : sandbox?.can_setup ? (
+              /* The blocker is one this machine can fix, so offer the fix rather
+                 than the command. pkexec puts the password prompt in the
+                 desktop's own dialog — nobody has to open a terminal. */
+              <div className="tp-item" onClick={fixSandbox}>
+                <span className="pulse idle" />
+                <div className="tp-item-main">
+                  <div className="tp-item-name">Set up this computer</div>
+                  <div className="tp-item-pkg">asks for your password once · survives reboots</div>
+                </div>
+              </div>
             ) : (
-              <div className="tp-none">{sandbox?.problem || "Checking for Docker…"}</div>
+              <div className="tp-none">
+                {sandbox?.problem || "Checking for Docker…"}
+                {sandbox?.problem && sandbox?.setup_cmd &&
+                  <div className="tp-cmd">{sandbox.setup_cmd}</div>}
+              </div>
             )}
 
             <div className="tp-head">Emulators</div>

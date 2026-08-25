@@ -28,15 +28,25 @@ assert "daemon is not reachable" in no_daemon.problem
 # Two binder failures that need DIFFERENT advice. Telling someone who has already
 # run modprobe to run modprobe is how an hour gets lost, so they are distinct.
 no_module = SandboxStatus(docker=True, daemon=True, binder="no-module", image=True, container=None)
-assert "modprobe binder_linux" in no_module.problem and not no_module.can_start
+assert "binder driver is not loaded" in no_module.problem and not no_module.can_start
 
 no_devices = SandboxStatus(docker=True, daemon=True, binder="no-devices", image=True, container=None)
 assert "exposes no devices" in no_devices.problem, no_devices.problem
-# Not "reload the module": Ubuntu marks binder_linux [permanent], so unloading
-# it is impossible before a reboot. The advice has to be one that can be taken.
-assert "mount -t binder" in no_devices.problem, no_devices.problem
-assert "modprobe -r" not in no_devices.problem
 assert not no_devices.can_start
+
+# Neither may hand out a shell command any more. The console fixes this itself
+# through pkexec, and a pasted `modprobe` is the wrong answer twice over: on
+# macOS and Windows there is no binder to load at all, so the command cannot
+# work and only wastes the reader's time. Both must point at the real options.
+for st in (no_module, no_devices):
+    assert "sudo " not in st.problem, st.problem
+    assert "Gremlin can" in st.problem, st.problem
+# Only the no-module case is reachable on a Mac or a Windows box, and that is
+# the one that has to name the way out that exists there.
+assert "emulator" in no_module.problem and "Setup page" in no_module.problem
+# Not "reload the module": Ubuntu marks binder_linux [permanent], so unloading
+# it is impossible before a reboot. Whatever we suggest has to be takeable.
+assert "modprobe -r" not in no_devices.problem
 
 ready = SandboxStatus(docker=True, daemon=True, binder="ok", image=True, container=None)
 assert ready.problem is None and ready.can_start and ready.note is None

@@ -27,9 +27,9 @@ from gremlin.gates import GateResult
 client = TestClient(dashboard.app)
 
 
-def _write_trace(run_dir: Path, n_bugs: int) -> None:
+def _write_trace(run_dir: Path, n_bugs: int, source_root: str = ".") -> None:
     run_dir.mkdir(parents=True, exist_ok=True)
-    (run_dir / "trace.json").write_text(json.dumps({"bugs": [
+    (run_dir / "trace.json").write_text(json.dumps({"source_root": source_root, "bugs": [
         {"severity": "crash", "kind": f"kind-{i}", "log_line": "boom",
          "context": [], "screenshot": "shot.png", "step": i,
          "trace": [], "dedup_key": f"key-{i}"}
@@ -53,6 +53,13 @@ dashboard._cfg.run_dir = run_dir
 if (run_dir / "trace.json").exists():
     (run_dir / "trace.json").unlink()
 assert client.post("/api/fix", json={"bug": 1}).status_code == 404
+
+# --- the run says where its source is, and it has to still be there ---------
+# The failure this encodes: a restarted console falls back to a default project
+# path that does not exist, and the endpoint answered 500 with no explanation.
+_write_trace(run_dir, 1, source_root="/nonexistent/project")
+r = client.post("/api/fix", json={"bug": 1})
+assert r.status_code == 400 and "not on disk" in r.json()["error"], r.json()
 
 _write_trace(run_dir, 2)
 
@@ -83,8 +90,10 @@ dashboard._require_clean_tree = lambda _cfg: None
 # --- accepted: runs off-thread, verdict lands under the bug's OWN number -----
 phases: list[str] = []
 
-def _fake_fix(cfg, bug, baseline_keys, backend=None, on_phase=None):
-    assert baseline_keys == {"key-1", "key-2"}, baseline_keys  # gate 3 baseline
+def _fake_fix(cfg, bug, baseline, backend=None, on_phase=None):
+    # Gate 3 replays these, so it needs the whole run's bugs — not just the one
+    # being fixed, and not merely their keys.
+    assert [b.dedup_key for b in baseline] == ["key-1", "key-2"], baseline
     on_phase("patching")
     return _FakeOutcome()
 

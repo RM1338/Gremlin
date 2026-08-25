@@ -364,6 +364,12 @@ class Explorer:
     def _write_trace(self) -> None:
         out = {
             "package": self.cfg.package,
+            # Which source tree this run was about. Tier 2 has to patch the app
+            # that was actually explored, and it may run long after the console
+            # was restarted or a different target picked — so the run carries its
+            # own answer rather than trusting whatever global state survives.
+            "source_root": str(self.cfg.scribe_root),
+            "platform": self.cfg.platform,
             "steps": len(self.trace),
             "distinct_screens": self.memory.count,
             "summary": self._summary(),

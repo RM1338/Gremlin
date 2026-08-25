@@ -152,17 +152,61 @@ def main() -> None:
         "trace": trace, "bugs": bugs,
     }, indent=2))
 
+    # Demo benchmark in the real (schema 2) shape, so the page's spread, sample
+    # table and detection rates are exercised by the seeder rather than only by a
+    # measured run. Every payload still carries demo:true — the pill on the page
+    # is what keeps this from being read as a result.
+    def _arm(name, screens, secs, keys_per_seed):
+        runs = [{"explorer": name, "actions": 30, "distinct_screens": sc,
+                 "distinct_bugs": len(ks), "duration_sec": d, "seed": i,
+                 "bug_keys": ks, "error": ""}
+                for i, (sc, d, ks) in enumerate(zip(screens, secs, keys_per_seed))]
+        import statistics as st
+        agg = lambda xs: {"n": len(xs), "mean": round(st.fmean(xs), 2),
+                          "sd": round(st.stdev(xs), 2) if len(xs) > 1 else 0.0,
+                          "min": min(xs), "max": max(xs),
+                          "median": round(st.median(xs), 2)}
+        union = sorted({k for ks in keys_per_seed for k in ks})
+        return {"runs": runs, "completed": len(runs), "failed": 0,
+                "screens": agg(screens), "bugs": agg([len(k) for k in keys_per_seed]),
+                "duration_sec": agg(secs), "bugs_union": union}
+
+    OVER = "renderflex-overflow|lib/screens/settings.dart:N"
+    CRASH = "dart-exception|lib/screens/profile.dart:N"
+    JANK = "frame-skip|Choreographer"
+    arms = {
+        "gremlin-vision": _arm("gremlin-vision", [8, 9, 7, 8, 8], [148.6, 151.2, 139.9, 146.0, 150.1],
+                               [[OVER, CRASH, JANK], [OVER, CRASH, JANK], [OVER, CRASH],
+                                [OVER, CRASH, JANK], [OVER, CRASH, JANK]]),
+        "gremlin-coverage": _arm("gremlin-coverage", [7, 7, 6, 8, 7], [61.2, 59.8, 63.0, 60.1, 62.4],
+                                 [[OVER, CRASH], [OVER, CRASH], [OVER],
+                                  [OVER, CRASH, JANK], [OVER, CRASH]]),
+        "monkey": _arm("monkey", [3, 2, 3, 4, 2], [44.0, 43.1, 45.2, 44.8, 43.9],
+                       [[OVER], [], [OVER], [OVER], []]),
+    }
+    detection = {}
+    for key in sorted({k for a in arms.values() for k in a["bugs_union"]}):
+        detection[key] = {n: {"found_in": sum(1 for r in a["runs"] if key in r["bug_keys"]),
+                              "of": a["completed"]}
+                          for n, a in arms.items()}
+
     (RUN / "eval.json").write_text(json.dumps({
+        "schema": 2, "demo": True,
+        "generated_at": "2026-08-25T21:00:00+0530",
+        "app": {"package": "com.gremlin.gremlin_bench", "platform": "flutter",
+                "source_root": "~/Projects/gremlin-bench-flutter", "commit": "demo000"},
+        "device": {"serial": "localhost:5555", "kind": "sandbox", "width": 1080,
+                   "height": 1920, "android": "13", "sdk": "33", "model": "redroid"},
+        "vision_model": {"provider": "gemini", "model": "gemini-2.0-flash"},
+        "protocol": {"actions": 30, "repeats": 5, "seeds": [0, 1, 2, 3, 4]},
+        "arms": arms, "detection_rates": detection,
         "package": "com.gremlin.gremlin_bench", "platform": "flutter",
-        "actions": 30, "seed": 0, "demo": True,
-        "results": [
-            {"explorer": "gremlin-vision", "actions": 30, "distinct_screens": 8,
-             "distinct_bugs": 3, "duration_sec": 148.6},
-            {"explorer": "gremlin-coverage", "actions": 30, "distinct_screens": 7,
-             "distinct_bugs": 3, "duration_sec": 61.2},
-            {"explorer": "monkey", "actions": 30, "distinct_screens": 3,
-             "distinct_bugs": 1, "duration_sec": 44.0},
-        ],
+        "actions": 30, "seed": 0,
+        "results": [{"explorer": n, "actions": 30,
+                     "distinct_screens": a["screens"]["mean"],
+                     "distinct_bugs": a["bugs"]["mean"],
+                     "duration_sec": a["duration_sec"]["mean"]}
+                    for n, a in arms.items()],
     }, indent=2))
 
     print(f"seeded demo run in {RUN}")

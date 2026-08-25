@@ -289,7 +289,19 @@ The engine is built; the science is not. Missing, in rough dependency order:
   measured rather than asserted.
 - **A defect corpus beyond the two fixtures** for M3: seeded defects with known
   ground truth, ideally across several form factors.
-- **A multi-seed runner** producing mean and variance, not single runs.
+- ~~**A multi-seed runner** producing mean and variance, not single runs.~~
+  **Built 25 Aug 2026.** `gremlin.eval --repeats N` (default 5) runs every arm
+  over consecutive seeds and reports mean ± sample sd, min/max/median, and the
+  individual samples. A seed that dies (a quota, a flaky device) is recorded as
+  a failed sample and **excluded** from the mean rather than counted as a zero,
+  so `n` is what was actually measured. It also emits a **per-defect detection
+  rate** — "found in 4 of 5 seeds" — which is the number a mean bug count cannot
+  express: a defect found once in five and one found five times in five
+  contribute the same +1 to an average and are not the same claim.
+  `eval.json` gained schema 2, carrying the device, geometry, Android version,
+  vision model and app commit alongside the results, because a benchmark without
+  its environment is a rumour. **Still owed: actually running it.** No number on
+  the Benchmark page is measured yet — the page reads demo data, flagged as such.
 - **Firebase Robo Test comparison**: note this is a batch cloud service and does
   not expose a live adb loop, so it is a *results* comparison on the same APKs,
   not a like-for-like harness.
@@ -325,9 +337,32 @@ Timing per arm is now recorded too, which is a first input to M6.
 
 ---
 
+## G13 — The default target was an app that existed on one laptop
+
+**Severity:** medium · **Status:** fixed 25 Aug 2026 · **Threatens:** every first run
+
+`config.PACKAGE` defaulted to `com.scribe.scribe`, the app Gremlin was first
+written against. With nothing selected the console's status chip advertised it
+as the target, `run.py` printed "No app projects detected; using the default
+target" and carried on, and `eval.main()` said much the same before benchmarking
+an app that was almost certainly not installed.
+
+Every one of those is the same mistake: treating "nobody has chosen yet" as a
+value rather than as a missing value, and then falling back to a fiction so that
+the failure happens later, somewhere less legible — a launch that silently does
+nothing, or a benchmark measuring an app that is not there.
+
+**Fixed.** `PACKAGE`/`ACTIVITY` are empty, `SCRIBE_ROOT` defaults to the projects
+root rather than a `Scribe/` subdirectory that need not exist, and all three
+entry points refuse instead of inventing a target: `run.py` and `eval.py` exit
+naming the flags that fix it, `/start` returns 400, and the console chip reads
+the live selection, falling back to "no app selected".
+
+---
+
 ## G11 — Tier 2 refuses to run while the Gremlin repo is dirty
 
-**Severity:** low · **Status:** accepted (know about it) · **Threatens:** developer time
+**Severity:** low · **Status:** FIXED 21 Aug 2026 · **Threatens:** developer time
 
 `fixer._require_clean_tree()` runs `git status` against `cfg.scribe_root`, and
 the fixtures live **inside this repository**. So any uncommitted change anywhere
@@ -338,22 +373,48 @@ wrong repository.
 Correct behaviour for a real app under test in its own repo; confusing for the
 bundled fixtures.
 
-**Fix.** Either keep it and remember to commit before autofix runs, or make the
-error message name the resolved repository root so the cause is obvious. Moving
-the fixtures out to their own repositories would fix it properly but costs the
-one-command demo.
+**Fixed** by taking the properly-costly option: the fixtures moved to one
+repository each (`fixtures/README.md`), so the fixer's tree is the app's own and
+Gremlin's state is irrelevant to it. The demo costs one `git clone`, which the
+reproducibility claim wanted anyway.
+
+Two things were kept from the cheap option, because the nesting case still
+exists for real apps inside monorepos: the error now names the resolved
+repository root and lists what is dirty, and it says when the app sits inside a
+larger repo that a fix would be committed to. Nesting stays a warning, never a
+refusal.
 
 ---
 
 ## G12 — Gate 2's thresholds are magic numbers
 
-**Severity:** low · **Status:** open · **Threatens:** M4
+**Severity:** medium · **Status:** partly fixed 21 Aug 2026 · **Threatens:** M4
 
 `screen_looks_same()` passes at a phash distance of ≤20, relaxed to ≤32 for
 layout-class bugs (`gremlin/fixer.py`). Neither number is derived from anything.
 A correct layout fix that reflows substantially can fail; a subtle cheat that
 barely changes the screen can pass.
 
-**Fix.** Calibrate on the fixtures alongside G7, and report the gate's
-false-accept and false-reject rates on the adversarial suite (G9) rather than
-presenting the thresholds as given.
+**The thresholds were the smaller half of the problem.** Measured on two real
+autofix attempts against the crash-class fixtures, both of which produced
+*correct* patches and both of which the gate reverted at distance 34:
+
+- replacing `throw StateError(...)` in a tap handler with a `SnackBar`
+- giving `BadBuildPage` a real `Scaffold` instead of throwing during `build()`
+
+Neither is a cheat, and no threshold could have admitted them, because the gate
+was asking the wrong question. `pre_png` is the *failure* frame. For a layout
+defect that frame is a working screen — the overflowing `Row` renders, and a fix
+reflows it modestly, so "still recognisable" means something. For a crash it is
+the defect itself: Flutter's red error box, or the screen an instant before it
+threw. Requiring the patched app to still resemble it is requiring the bug back.
+
+**Partly fixed.** The distance comparison now applies only to layout-class bugs
+(`compare_to_pre`); crash-class fixes keep the blank/collapsed check, which is
+what actually catches a deleted widget, and skip the comparison. The ≤32
+threshold for layout is still an unvalidated number — that half stands, and the
+calibration below is still owed.
+
+**Fix.** Calibrate the remaining threshold on the fixtures alongside G7, and
+report the gate's false-accept and false-reject rates on the adversarial suite
+(G9) rather than presenting the number as given.

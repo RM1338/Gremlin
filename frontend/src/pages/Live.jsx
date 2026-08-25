@@ -31,8 +31,16 @@ export default function Live() {
           {done ? <Summary s={st.summary} /> : (
           <div className="phone"><div className="phone-screen">
             {cur?.frame
-              ? <img src={`data:image/png;base64,${cur.frame}`} alt="device" />
-              : <div className="phone-empty">{st.running ? <><div className="spinner" />waiting for first frame…</> : "press Start run to begin"}</div>}
+              ? <img src={`data:image/png;base64,${cur.frame}`} alt="device"
+                     onLoad={(e) => {
+                       // The bezel is shaped by whatever is actually being driven:
+                       // a sandbox container boots at 1080x1920, a phone is often
+                       // 1080x2340, and a fixed bezel cropped the difference away.
+                       const { naturalWidth: w, naturalHeight: h } = e.target;
+                       if (w && h) e.target.closest(".phone")
+                         ?.style.setProperty("--shot-aspect", `${w}/${h}`);
+                     }} />
+              : <div className="phone-empty">{st.running ? <><div className="spinner" />{st.status || "waiting for first frame…"}</> : "press Start run to begin"}</div>}
           </div></div>
           )}
         </div>

@@ -25,16 +25,19 @@ load_dotenv()
 # /workspace/fixtures.
 PROJECTS_ROOT = Path(os.environ.get("GREMLIN_PROJECTS_ROOT", Path.home() / "Projects"))
 
-# Default app under test (used when no target is picked). Overridden per-run by
-# gremlin.targets once a Flutter project is selected in the CLI or the console.
-PACKAGE = "com.scribe.scribe"
-ACTIVITY = "com.scribe.scribe/.MainActivity"
+# There is no default app under test, and that is deliberate. This used to be
+# `com.scribe.scribe`, the app Gremlin was first written against — which meant a
+# fresh install with nothing selected advertised a target that existed on one
+# laptop in the world, and "falling back to the default so nothing breaks" broke
+# things later and less legibly than refusing would have. Empty means "nobody has
+# picked yet"; gremlin.targets fills it in from the CLI or the console.
+PACKAGE = ""
+ACTIVITY = ""
 
 # Where the selected project's source lives, so the fixer (Tier 2) can be pointed
 # at file:line. Named `scribe_root` in Config for backward-compat; it holds the
 # source root of whatever project is currently selected.
-SCRIBE_ROOT = Path(os.environ.get("GREMLIN_APP_ROOT",
-                                  PROJECTS_ROOT / "Scribe"))
+SCRIBE_ROOT = Path(os.environ.get("GREMLIN_APP_ROOT", PROJECTS_ROOT))
 
 
 @dataclass

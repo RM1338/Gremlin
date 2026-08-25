@@ -6,8 +6,14 @@
     python run.py --package com.foo.bar --activity com.foo.bar/.MainActivity
     python run.py --steps 40
 
-No phone? Run it on an emulator instead — Gremlin boots one and drives it
-exactly as it would a physical device:
+No phone? With nothing attached, Gremlin starts the sandbox container itself,
+installs the app into it, and drives it exactly as it would a physical device:
+
+    python run.py --project ~/Projects/MyApp    # no device -> sandbox
+    python run.py --sandbox             # sandbox even with a phone attached
+    python run.py --keep-sandbox        # leave it up; the next run adopts it
+
+Or an emulator, if you would rather have one:
 
     python run.py --avds                # list the AVDs on this machine
     python run.py --emulator            # boot the first AVD and use it
@@ -25,6 +31,7 @@ from gremlin.explorer import Explorer
 from gremlin.reporter import write_reports
 from gremlin.targets import find_projects, target_for_project
 from gremlin import emulator as emu
+from gremlin import sandbox as sbx
 
 
 def _resolve_config(args) -> Config:
@@ -57,19 +64,79 @@ def _resolve_config(args) -> Config:
         for t in targets:
             print(f"  --project {t.source_root}   ({t.name}, {t.toolkit.label}, {t.package})")
         sys.exit(1)
-    # None found: fall back to the built-in default so nothing breaks.
-    print("No app projects detected; using the default target.")
-    return Config()
+    # None found. There is nothing sensible to fall back to: a default package
+    # is an app that is probably not on this machine, and launching it fails
+    # further downstream with a worse message than this one.
+    sys.exit(f"No app projects found under {args.projects_root}.\n"
+             f"  Point Gremlin at one:  python run.py --project <path>\n"
+             f"  Or test an installed app:  python run.py --package <id>\n"
+             f"  (--list shows what was detected; GREMLIN_PROJECTS_ROOT moves the scan.)")
 
 
-def _resolve_device(args) -> "emu.Emulator | None":
-    """Boot an emulator if one was asked for, or if nothing else is connected.
+def _attached() -> list[str]:
+    """Serials adb is ready to drive right now."""
+    return [s for s, state in emu._adb_devices() if state == "device"]
 
-    Returns the Emulator so the caller can shut it down, or None when we are
-    driving a device that was already there — which we must not kill.
+
+def _device_plan(args, attached: list[str], sandbox_running: bool) -> str:
+    """Which device this run gets: emulator | attached | adopt-sandbox | start-sandbox.
+
+    Split out from the doing so the order of precedence can be read (and tested)
+    in one place. An explicit --serial always wins, because the one thing worse
+    than no device is booting a container over the phone someone asked for.
     """
-    if not (args.emulator or args.avd):
-        return None
+    if args.emulator or args.avd:
+        return "emulator"
+    if args.serial:
+        return "attached"
+    if sandbox_running:
+        # Already up: adopt it rather than paying another boot, exactly as a
+        # running emulator is adopted. --keep-sandbox is what leaves one up.
+        return "adopt-sandbox"
+    if args.sandbox or not attached:
+        return "start-sandbox"
+    return "attached"
+
+
+def _resolve_device(args) -> tuple[object | None, str | None]:
+    """Get this run a device: (handle to shut down afterwards, serial to drive).
+
+    The handle is None whenever we adopted something we did not start — a phone,
+    or a container someone left running — because killing those is not ours to do.
+    """
+    attached = _attached()
+    plan = _device_plan(args, attached, sbx.running())
+
+    if plan == "attached":
+        return None, None
+
+    if plan == "adopt-sandbox":
+        print(f"using the sandbox already running on {sbx.SERIAL}")
+        return None, sbx.SERIAL
+
+    if plan == "start-sandbox":
+        st = sbx.status()
+        if st.problem:
+            # Every one of these is a one-command fix, and the message names the
+            # command — so lead with it rather than burying it under our own.
+            fallback = "" if attached else ("\n  (or attach a phone, or boot an "
+                                            "emulator with --emulator)")
+            sys.exit(f"the sandbox cannot start.\n  {st.problem}{fallback}")
+        if st.note:
+            print(st.note)
+        print("starting the sandbox container..." if attached
+              else "no device attached — starting the sandbox container...")
+        try:
+            sb = sbx.Sandbox.start()
+        except (RuntimeError, TimeoutError) as e:
+            sys.exit(f"sandbox did not start: {e}")
+        print(f"sandbox ready: {sb.serial} at {sb.width}x{sb.height} @{sb.dpi}dpi")
+        return sb, sb.serial
+
+    return _boot_emulator(args)
+
+
+def _boot_emulator(args) -> tuple["emu.Emulator", str]:
     status = emu.sdk_status()
     if status.problem:
         sys.exit(f"Cannot start an emulator: {status.problem}")
@@ -89,7 +156,7 @@ def _resolve_device(args) -> "emu.Emulator | None":
         # can fix (disk, KVM, a missing image) — report it, don't stack-trace.
         sys.exit(f"emulator {name} did not start: {e}")
     print(f"emulator ready: {started.serial}")
-    return started
+    return started, started.serial
 
 
 def main() -> None:
@@ -106,6 +173,11 @@ def main() -> None:
     ap.add_argument("--projects-root", type=Path, default=PROJECTS_ROOT,
                     help="where to scan for app projects")
     ap.add_argument("--list", action="store_true", help="list detected app projects and exit")
+    ap.add_argument("--sandbox", action="store_true",
+                    help="run against the sandbox container even when a device is attached "
+                         "(with nothing attached this is the default)")
+    ap.add_argument("--keep-sandbox", action="store_true",
+                    help="leave the sandbox container running after the run finishes")
     ap.add_argument("--emulator", action="store_true",
                     help="boot an emulator for this run instead of using a connected device")
     ap.add_argument("--avd", default=None, help="which AVD to boot (implies --emulator)")
@@ -145,15 +217,23 @@ def main() -> None:
     if args.policy is not None:
         cfg.policy = args.policy
 
-    started = _resolve_device(args)
-    # An explicit --serial always wins; otherwise a booted emulator is the device.
-    cfg.serial = args.serial or (started.serial if started else None)
+    started, serial = _resolve_device(args)
+    # An explicit --serial always wins; otherwise whatever we booted is the device.
+    cfg.serial = args.serial or serial
 
     try:
+        if sbx.is_sandbox(cfg.serial):
+            # A container starts with no apps in it, so the target has to be
+            # built and pushed before there is anything to explore.
+            try:
+                sbx.ensure_installed(cfg, on_status=print)
+            except RuntimeError as e:
+                sys.exit(str(e))
         _run(cfg)
     finally:
-        if started and not args.keep_emulator:
-            print(f"shutting down emulator {started.serial}")
+        keep = args.keep_sandbox if isinstance(started, sbx.Sandbox) else args.keep_emulator
+        if started and not keep:
+            print(f"shutting down {started.serial}")
             started.stop()
 
 

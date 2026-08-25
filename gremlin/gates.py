@@ -60,15 +60,31 @@ def _is_mostly_blank(png: bytes) -> bool:
 
 
 def screen_looks_same(pre_png: bytes, post_png: bytes,
-                      recognizable_within: int = 20) -> GateResult:
-    """Pass if the post-fix screen is recognizably the same screen.
+                      recognizable_within: int = 20,
+                      compare_to_pre: bool = True) -> GateResult:
+    """Pass if the post-fix screen still renders a real screen.
 
-    A real fix nudges the layout slightly (phash distance small-to-moderate). A
-    deleted widget or a collapsed/blanked screen changes it drastically or leaves
-    it empty — this is the gate that catches the cheap fix.
+    Two different questions hide in here, and conflating them reverted correct
+    fixes (docs/KNOWN_ISSUES.md, G12).
+
+    *Does it still render?* Always asked. A deleted widget or a collapsed layout
+    leaves a near-empty screen, and that is the cheap fix this gate exists to
+    catch.
+
+    *Does it still look like the screen we photographed?* Only meaningful when
+    the photograph was of a working screen. For a layout defect it was: the
+    overflowing Row still renders, and a fix reflows it modestly. For a crash it
+    was not — `pre_png` is either Flutter's red error box or the screen an
+    instant before it broke, and a correct fix is *obliged* to change it. Asking
+    a build error to keep looking like a build error is asking for the bug back,
+    so `compare_to_pre=False` skips the distance for those.
     """
     if _is_mostly_blank(post_png):
         return GateResult("screen-looks-same", False, "post-fix screen is blank/collapsed")
+    if not compare_to_pre:
+        return GateResult("screen-looks-same", True,
+                          "screen still renders; not compared to the failure frame, "
+                          "which was the defect")
     dist = abs(_phash(pre_png) - _phash(post_png))
     ok = dist <= recognizable_within
     return GateResult(
@@ -81,14 +97,22 @@ def screen_looks_same(pre_png: bytes, post_png: bytes,
 
 # ---- Gate 3: nothing new broke ----------------------------------------------
 
-def no_new_breakage(post_fix_keys: set[str], baseline_keys: set[str]) -> GateResult:
-    """Pass if a re-exploration surfaces no signal that was absent before the fix."""
+def no_new_breakage(post_fix_keys: set[str], baseline_keys: set[str],
+                    replayed: int = 0) -> GateResult:
+    """Pass if replaying the run's other traces surfaces no signal absent before.
+
+    `replayed` is how many of the run's other bug traces were re-run. It goes in
+    the detail because a pass says nothing on its own: checking two traces and
+    checking none produce the same verdict, and only the number distinguishes
+    them (docs/KNOWN_ISSUES.md, G2).
+    """
     new = post_fix_keys - baseline_keys
-    return GateResult(
-        "no-new-breakage",
-        not new,
-        "no new signals introduced" if not new else f"patch introduced: {', '.join(sorted(new))}",
-    )
+    if new:
+        return GateResult("no-new-breakage", False,
+                          f"patch introduced: {', '.join(sorted(new))}")
+    where = (f"replayed {replayed} other trace(s) from this run" if replayed
+             else "no other traces in this run — nothing independent to check")
+    return GateResult("no-new-breakage", True, f"no new signals; {where}")
 
 
 # ---- Static guard: reject the obvious cheats before replaying ---------------

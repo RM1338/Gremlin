@@ -7,7 +7,7 @@ let state = {
   loading: true,
   running: false,
   done: false,
-  package: "com.scribe.scribe",
+  package: "",        // filled from the server; no app is the default
   trace: null,
   evalData: null,
   screens: [],
@@ -33,10 +33,30 @@ let state = {
   fixingBug: null,
   fixPhase: "",
   fixError: null,     // {bug, msg} — why THAT bug's fix could not be started
+  runId: "",          // changes with each run; tags frame URLs so they cannot alias
+  // "W/H" of the device this run was recorded on. A 16:9 container and a 19.5:9
+  // handset are different shapes, and a bezel built for one crops the other.
+  screenAspect: "",
+  merging: null,      // bug number whose verified fix is being merged
+  merged: {},         // {bugNumber: {merged, into, repo}} for fixes taken this session
+  // What the run is doing before it has a frame to show. A cold Gradle build
+  // into a fresh sandbox is minutes of an otherwise dead-looking page.
+  status: "",
 };
 
 const listeners = new Set();
-const set = (patch) => { state = { ...state, ...patch }; listeners.forEach((l) => l()); };
+const set = (patch) => {
+  state = { ...state, ...patch };
+  // screenUrl() is called from render paths that have no store access.
+  if (typeof window !== "undefined") {
+    window.__gremlinRun = state.runId;
+    // One variable drives the phone bezel and every thumbnail, so they cannot
+    // disagree about what shape the device was.
+    if (state.screenAspect)
+      document.documentElement.style.setProperty("--shot-aspect", state.screenAspect);
+  }
+  listeners.forEach((l) => l());
+};
 
 export function subscribe(cb) { listeners.add(cb); return () => listeners.delete(cb); }
 export function getSnapshot() { return state; }
@@ -52,9 +72,27 @@ export function evalRows(raw) {
 
 // Arms by role. The vision arm was simply "gremlin" before the no-model
 // ablation existed, so both names resolve to it.
+//
+// Schema 2 reports every arm over several seeds — mean, spread and the samples
+// themselves. It is normalised to the same field names the single-sample shape
+// used, so the charts read one thing whichever produced the file, and the extra
+// fields (sd, n, runs) are simply absent on the older ones. A mean with no
+// spread beside it is exactly what this page used to overclaim, so `sd` being
+// undefined has to stay visible rather than render as zero.
 export function evalArms(raw) {
-  const rows = evalRows(raw);
-  if (!rows) return null;
+  const rows = raw?.schema >= 2 && raw.arms
+    ? Object.entries(raw.arms).map(([explorer, a]) => ({
+        explorer,
+        actions: raw.protocol?.actions ?? raw.actions,
+        distinct_screens: a.screens?.mean ?? 0,
+        distinct_bugs: a.bugs?.mean ?? 0,
+        duration_sec: a.duration_sec?.mean ?? 0,
+        sd: { screens: a.screens?.sd, bugs: a.bugs?.sd },
+        n: a.completed, failed: a.failed,
+        runs: a.runs || [], bugsUnion: a.bugs_union || [],
+      }))
+    : evalRows(raw);
+  if (!rows || !rows.length) return null;
   const by = (n) => rows.find((e) => e.explorer === n) || null;
   return {
     rows,
@@ -73,6 +111,8 @@ export async function loadState() {
       loading: false, running: d.running, package: d.package || state.package,
       trace: d.trace, evalData: d.eval, screens: d.screens || [],
       fixBackend: d.fix_backend || state.fixBackend,
+      runId: d.run_id || state.runId,
+      screenAspect: d.screen_aspect || state.screenAspect,
       // A fix survives a page reload; the server knows, this tab may not.
       fixingBug: d.fixing ? (state.fixingBug ?? 0) : null,
     });
@@ -179,6 +219,22 @@ export async function startSandbox({ width, height, dpi } = {}) {
   }
 }
 
+/* Fix the host's binder/Docker prerequisites through the desktop's own password
+   dialog (pkexec), so the answer to "the sandbox cannot start" is a button and
+   not a modprobe line pasted into a terminal. */
+export async function setupSandbox() {
+  set({ booting: "Waiting for your password…" });
+  try {
+    const r = await fetch("/api/sandbox/setup", { method: "POST" });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || "setup failed");
+    await loadDevices();
+    return d;
+  } finally {
+    set({ booting: null });
+  }
+}
+
 export async function stopSandbox() {
   try {
     await fetch("/api/sandbox/stop", { method: "POST" });
@@ -203,7 +259,7 @@ export async function startRun(target) {
   if ("Notification" in window && Notification.permission === "default") {
     try { await Notification.requestPermission(); } catch {}
   }
-  set({ running: true, done: false, stopping: false, summary: null, selected: t || state.selected, live: { steps: [], bugs: [], current: null, screenCount: 0 } });
+  set({ running: true, done: false, stopping: false, summary: null, status: "", selected: t || state.selected, live: { steps: [], bugs: [], current: null, screenCount: 0 } });
   try {
     await fetch("/start", {
       method: "POST",
@@ -248,6 +304,29 @@ export async function startFix(n) {
   }
 }
 
+/* Take a verified fix. Deliberately a second, explicit click rather than
+   something the autofix does on its own: the gates make a patch worth reading,
+   not worth taking unread. */
+export async function mergeFix(n) {
+  set({ merging: n, fixError: null });
+  try {
+    const r = await fetch("/api/fix/merge", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ bug: n }),
+    });
+    const d = await r.json();
+    if (!r.ok) throw new Error(d.error || "could not merge the fix");
+    set({ merged: { ...state.merged, [n]: d } });
+    return d;
+  } catch (e) {
+    set({ fixError: { bug: n, msg: e.message } });
+    throw e;
+  } finally {
+    set({ merging: null });
+  }
+}
+
 let ws = null;
 export function connectWS() {
   if (ws) return;
@@ -256,6 +335,7 @@ export function connectWS() {
   ws.onmessage = (e) => {
     const m = JSON.parse(e.data);
     if (m.event === "step") onStep(m);
+    else if (m.event === "status") set({ status: m.note || "" });
     else if (m.event === "bug") onBug(m);
     else if (m.event === "done") onDone(m);
     else if (m.event === "fix") onFix(m);
@@ -280,7 +360,7 @@ async function onFix(m) {
 }
 
 async function onDone(m) {
-  set({ running: false, done: true, stopping: false, summary: m });
+  set({ running: false, done: true, stopping: false, status: "", summary: m });
   notifyRunComplete(m);
   await loadState();
 }

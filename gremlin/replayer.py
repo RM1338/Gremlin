@@ -30,6 +30,10 @@ class ReplayResult:
     def keys(self) -> set[str]:
         return {s.key() for s in self.signals}
 
+    def stable_keys(self) -> set[str]:
+        """Identities that survive the patch having moved lines around."""
+        return {s.stable_key() for s in self.signals}
+
 
 def _execute(dev: Device, a: Action) -> None:
     if a.verb == "tap" and a.x is not None and a.y is not None:

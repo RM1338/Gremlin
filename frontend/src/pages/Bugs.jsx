@@ -4,7 +4,7 @@ import Mascot from "../lib/Mascot.jsx";
 import { sevClass, screenUrl, Pager, Lightbox } from "../lib/ui.jsx";
 import { usePaged } from "../lib/usePaged.js";
 import { useStore } from "../lib/useStore.js";
-import { startFix } from "../lib/store.js";
+import { startFix, mergeFix } from "../lib/store.js";
 
 // What the server is doing between the click and the verdict. Minutes, not
 // seconds — so the stage names are the progress bar.
@@ -14,7 +14,8 @@ const PHASES = {
   guard: "Guarding the diff against symptom-silencers…",
   rebuild: "Rebuilding and installing the APK…",
   replay: "Replaying the trace that caused the bug…",
-  probe: "Re-exploring the app for new breakage…",
+  probe: "Replaying the run's other traces…",
+  restoring: "Reinstalling the original build on the device…",
 };
 
 // The three gates the Tier-2 autofix must clear, in pipeline order. Names match
@@ -152,6 +153,7 @@ function Tier2({ bug: b, n, backend }) {
   const busy = st.fixingBug !== null;          // one device, one fix at a time
   const mine = st.fixingBug === n;             // ...and this card's fix is the one
   const canRun = backend && backend !== "prompt";
+  const took = st.merged?.[n];                 // this fix was taken, this session
   const gateByName = {};
   (fix?.gates || []).forEach((g) => { gateByName[g.name] = g; });
   const status = fix ? (fix.verified ? "verified" : "reverted") : "pending";
@@ -175,7 +177,30 @@ function Tier2({ bug: b, n, backend }) {
         })}
       </div>
 
-      {fix?.branch && <div className="tier-sub" style={{ marginTop: 12 }}>Patch left on branch <code>{fix.branch}</code> for review.</div>}
+      {fix?.branch && !took && (
+        <div className="tier-sub" style={{ marginTop: 12 }}>
+          Patch left on branch <code>{fix.branch}</code> for review.
+        </div>
+      )}
+
+      {/* Merging is the developer's call, so it is its own click — but it should
+          not cost a trip to the terminal once the gates have spoken. */}
+      {fix?.verified && !took && (
+        <div className="fix-actions">
+          <button className="btn btn-primary" disabled={busy || st.merging === n}
+                  onClick={() => mergeFix(n).catch(() => {})}>
+            <Check /> {st.merging === n ? "Merging…" : "Merge this fix"}
+          </button>
+          <span className="fix-hint">
+            Merges <code>{fix.branch}</code> into the app's current branch. No push.
+          </span>
+        </div>
+      )}
+      {took && (
+        <div className="fix-merged">
+          <Check /> Merged <code>{took.merged}</code> into <b>{took.into}</b> — nothing was pushed.
+        </div>
+      )}
 
       {mine && <div className="fix-progress"><span className="spin" />{PHASES[st.fixPhase] || "Working…"}</div>}
       {st.fixError?.bug === n && !busy && <div className="fix-error">{st.fixError.msg}</div>}

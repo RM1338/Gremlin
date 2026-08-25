@@ -62,9 +62,27 @@ class Signal:
             loc = re.sub(r"\d+", "N", self.line)[:80]
         return f"{self.kind}|{loc}"
 
+    def stable_key(self) -> str:
+        return stable_key(self.kind, self.line)
+
     def summary(self) -> str:
         loc = f" ({self.source_file}:{self.source_line})" if self.source_file else ""
         return f"[{self.severity}] {self.kind}{loc}"
+
+
+def stable_key(kind: str, log_line: str) -> str:
+    """Signal identity that survives an edit *above* it.
+
+    `Signal.key()` locates a bug at `file:line`, which is the right identity for
+    dedup within one run and the wrong one across a patch. A fix that adds or
+    removes a line moves every bug below it, and a moved bug then reads as a
+    brand-new one — which is how a correct one-line fix got reverted for a crash
+    it never caused (docs/KNOWN_ISSUES.md, G2). The message does not move.
+
+    Digits go to N for the same reason `key()` does it: pids and counters vary
+    between runs and are not part of what makes a signal this signal.
+    """
+    return f"{kind}|{re.sub(r'\d+', 'N', log_line)[:80]}"
 
 
 class Oracle:

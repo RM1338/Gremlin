@@ -21,6 +21,7 @@ import json
 import threading
 import traceback
 from contextlib import asynccontextmanager
+from dataclasses import replace
 from pathlib import Path
 
 import uvicorn
@@ -33,7 +34,8 @@ from .config import Config, PROJECTS_ROOT
 from .device import Device
 from .explorer import Explorer
 from .fix_backend import backend_name, edits_source
-from .fixer import DirtyTreeError, fix_one, _require_clean_tree
+from .fixer import (DirtyTreeError, FixMergeError, fix_one, merge_fix,
+                    _require_clean_tree)
 from .targets import all_targets
 from . import emulator, platforms, sandbox, settings
 
@@ -108,6 +110,14 @@ def _start_run() -> None:
     def worker() -> None:
         global _explorer
         try:
+            if sandbox.is_sandbox(_cfg.serial):
+                # A container starts empty, so there is nothing to explore until
+                # the target is built and pushed into it. The CLI has always done
+                # this; the console used to launch a package that was not there.
+                # It happens on the run thread because a cold Gradle build is
+                # minutes long and /start must not block on it.
+                sandbox.ensure_installed(
+                    _cfg, on_status=lambda m: _on_event("status", {"note": m}))
             _explorer = Explorer(_cfg, on_event=_on_event)
             bugs = _explorer.run()
             from .reporter import write_reports
@@ -190,6 +200,10 @@ async def start(request: Request):
                 found = platforms.detect_platform_on_device(Device(_cfg.serial), pkg)
                 plat = found.name if found else platforms.DEFAULT.name
             _cfg.platform = plat
+    if not _cfg.package:
+        return JSONResponse(
+            {"error": "no app selected — pick one from the target list first"},
+            status_code=400)
     _start_run()
     return {"started": True, "package": _cfg.package, "activity": _cfg.activity,
             "platform": _cfg.platform}
@@ -259,6 +273,66 @@ async def api_stop() -> JSONResponse:
     return JSONResponse({"stopping": True})
 
 
+def _run_project() -> "tuple[Config, list] | JSONResponse":
+    """The project this run explored, and its bugs — or why we cannot say.
+
+    The run records its own source root, because the module-level _cfg only says
+    what was last selected: after a console restart that is a default which may
+    not exist, and after picking another target it is the wrong app entirely.
+    """
+    trace = _cfg.run_dir / "trace.json"
+    if not trace.exists():
+        return JSONResponse({"error": "no run to fix — this run has no trace.json"},
+                            status_code=404)
+    recorded = _read_json(trace) or {}
+    cfg = replace(_cfg, scribe_root=Path(recorded["source_root"]),
+                  platform=recorded.get("platform") or _cfg.platform) \
+        if recorded.get("source_root") else _cfg
+    if not Path(cfg.scribe_root).is_dir():
+        return JSONResponse(
+            {"error": f"the app's source is not on disk at {cfg.scribe_root} — "
+                      f"start a run against the project you want to fix, so the "
+                      f"run records where its source lives."}, status_code=400)
+    return cfg, _load_bugs(trace)
+
+
+@app.post("/api/fix/merge")
+async def api_fix_merge(request: Request) -> JSONResponse:
+    """Merge a verified fix into the app's base branch: {"bug": N}.
+
+    Only ever a verified one. The gates are what make a patch worth taking, so a
+    reverted or unattempted bug has nothing to offer here — and the verdict is
+    read back off disk rather than trusted from the browser.
+    """
+    if _run_started or _fixing:
+        return JSONResponse({"error": "the device is busy — wait for it to finish"},
+                            status_code=409)
+    resolved = _run_project()
+    if isinstance(resolved, JSONResponse):
+        return resolved
+    cfg, bugs = resolved
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    n = body.get("bug")
+    if not isinstance(n, int) or not 1 <= n <= len(bugs):
+        return JSONResponse({"error": f"'bug' must be 1..{len(bugs)}"}, status_code=400)
+
+    outcome = _read_json(cfg.run_dir / "reports" / f"bug_{n:03d}.fix.json") or {}
+    if not outcome.get("verified") or not outcome.get("branch"):
+        return JSONResponse(
+            {"error": "there is no verified fix for this bug to merge"}, status_code=400)
+    try:
+        base = await asyncio.to_thread(merge_fix, cfg, outcome["branch"])
+    except (FixMergeError, DirtyTreeError) as e:
+        return JSONResponse({"error": str(e)}, status_code=409)
+    except RuntimeError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    return JSONResponse({"merged": outcome["branch"], "into": base,
+                         "repo": str(cfg.scribe_root)})
+
+
 @app.post("/api/fix")
 async def api_fix(request: Request) -> JSONResponse:
     """Attempt the Tier-2 autofix for one bug of the current run: {"bug": N}.
@@ -280,11 +354,10 @@ async def api_fix(request: Request) -> JSONResponse:
                       f"edits nothing. Set it to claude, codex or copilot in Settings."},
             status_code=400)
 
-    trace = _cfg.run_dir / "trace.json"
-    if not trace.exists():
-        return JSONResponse({"error": "no run to fix — this run has no trace.json"},
-                            status_code=404)
-    bugs = _load_bugs(trace)
+    resolved = _run_project()
+    if isinstance(resolved, JSONResponse):
+        return resolved
+    cfg, bugs = resolved
     try:
         body = await request.json()
     except Exception:
@@ -298,23 +371,26 @@ async def api_fix(request: Request) -> JSONResponse:
     # and this is the failure a developer hits most, so answer it in the response
     # rather than as a verdict five seconds later.
     try:
-        _require_clean_tree(_cfg)
+        _require_clean_tree(cfg)
     except DirtyTreeError as e:
         return JSONResponse({"error": str(e)}, status_code=409)
+    except RuntimeError as e:
+        # Not a git repository, or git itself failed. A 500 told the developer
+        # nothing; the reason is short and worth showing.
+        return JSONResponse({"error": str(e)}, status_code=400)
 
-    # Gate 3 calls anything not already known a NEW break, so the baseline has to
-    # be every bug in the run, not just the one being fixed.
-    baseline_keys = {b.dedup_key for b in bugs}
+    # Gate 3 calls anything not already known a NEW break and replays the other
+    # bugs' traces, so it needs every bug in the run, not just the one being fixed.
     _fixing = True
 
     def worker() -> None:
         global _fixing
         try:
             outcome = fix_one(
-                _cfg, bug, baseline_keys, backend=backend,
+                cfg, bug, bugs, backend=backend,
                 on_phase=lambda ph: _broadcast({"event": "fix", "bug": n, "phase": ph}),
             )
-            _persist_outcome(_cfg.run_dir, n, outcome)
+            _persist_outcome(cfg.run_dir, n, outcome)
             _broadcast({"event": "fix", "bug": n, "phase": "done", **outcome_payload(outcome)})
         except BaseException as e:
             # Same reasoning as the run thread: a silent death here would leave
@@ -368,8 +444,30 @@ async def api_devices() -> JSONResponse:
             "can_start": box.can_start,
             "problem": box.problem,   # e.g. binder not loaded, with the fix
             "note": box.note,         # e.g. the first start downloads the image
+            # Whether that problem is one the console can fix itself, with a
+            # button and the desktop's own password dialog, instead of handing
+            # the developer a modprobe line to paste into a terminal.
+            "can_setup": box.binder != "ok" and sandbox.can_self_setup(),
+            "setup_cmd": f"sudo {sandbox.SETUP_SCRIPT}",
         },
     })
+
+
+@app.post("/api/sandbox/setup")
+async def api_sandbox_setup() -> JSONResponse:
+    """Make this host able to run the sandbox: binder now, and after reboot.
+
+    Root, so it goes through pkexec and the user authorises it in their desktop's
+    normal password dialog. That is the only privileged thing Gremlin ever does,
+    it is never silent, and the script it runs is in the repo to be read.
+    """
+    try:
+        out = await asyncio.to_thread(sandbox.setup)
+    except RuntimeError as e:
+        return JSONResponse({"error": str(e)}, status_code=400)
+    box = sandbox.status()
+    return JSONResponse({"ok": True, "log": out, "can_start": box.can_start,
+                         "problem": box.problem})
 
 
 @app.post("/api/devices/select")
@@ -471,8 +569,33 @@ async def api_state() -> JSONResponse:
             "eval": ev,
             "screens": screens,
             "fix_backend": _fix_backend_name(),
+            # Frame filenames repeat every run, so the client tags their URLs
+            # with this to keep one run's screenshots out of the next one's page.
+            "run_id": _run_id(run_dir),
+            # Every frame in a run shares the device's shape, so the UI can size
+            # its phone bezel and thumbnails from the device actually driven
+            # rather than from one hardcoded handset.
+            "screen_aspect": _screen_aspect(screens, screens_dir),
         }
     )
+
+
+def _screen_aspect(screens: list[str], screens_dir: Path) -> str | None:
+    """"W/H" of this run's frames, read from the first one. None if unknowable."""
+    if not screens:
+        return None
+    try:
+        from PIL import Image
+        with Image.open(screens_dir / screens[0]) as im:
+            return f"{im.width}/{im.height}"
+    except Exception:
+        return None
+
+
+def _run_id(run_dir: Path) -> str:
+    """A token that changes whenever this run directory is rewritten."""
+    t = run_dir / "trace.json"
+    return str(int(t.stat().st_mtime)) if t.exists() else ""
 
 
 def _fix_backend_name() -> str:
@@ -511,7 +634,13 @@ async def api_screen(name: str):
     path = _cfg.run_dir / "screens" / safe
     if not path.exists() or path.suffix != ".png":
         return JSONResponse({"error": "not found"}, status_code=404)
-    return FileResponse(path, media_type="image/png")
+    # Every run writes the same names into the same directory, so this URL
+    # returns different bytes after each one. With only an etag the browser is
+    # free to guess a freshness lifetime and skip revalidating — which is how a
+    # previous run's frame kept showing under this run's bug. no-cache still
+    # allows a 304, it just forbids guessing.
+    return FileResponse(path, media_type="image/png",
+                        headers={"Cache-Control": "no-cache"})
 
 
 @app.websocket("/ws")

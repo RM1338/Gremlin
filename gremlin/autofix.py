@@ -76,10 +76,10 @@ def main() -> None:
     cfg.run_dir = Path(args.run)
     all_bugs = _load_bugs(cfg.run_dir / "trace.json")
     bugs = all_bugs
-    # The "no new breakage" gate compares a post-fix re-exploration against every
-    # bug already known from this run — so the baseline must be ALL bugs, computed
-    # before any --kind filter, or the run's other pre-existing bugs look "new".
-    baseline_keys = {b.dedup_key for b in bugs}
+    # The "no new breakage" gate measures against every bug already known from
+    # this run, and replays their recorded traces — so the baseline must be ALL
+    # bugs, before any --kind filter, or the run's other pre-existing bugs look
+    # "new" and there is nothing deterministic left to replay.
     if args.kind:
         bugs = [b for b in bugs if b.kind == args.kind]
     # The reports are numbered by position in the RUN, and --kind filters that
@@ -110,7 +110,7 @@ def main() -> None:
     write_reports(bugs, cfg)
     try:
         for bug in bugs:
-            outcome = fix_one(cfg, bug, baseline_keys,
+            outcome = fix_one(cfg, bug, all_bugs,
                               do_rebuild=not args.no_rebuild, backend=backend)
             _persist_outcome(cfg.run_dir, numbers[id(bug)], outcome)
             mark = "VERIFIED ✓" if outcome.verified else "reverted"

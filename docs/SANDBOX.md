@@ -11,7 +11,17 @@ laptop; the build timing is measured, not estimated.
 **Status, 21 Aug 2026.** Steps 1-3 of the implementation order in §10 are done.
 `gremlin/sandbox.py` starts and stops a redroid container, exposes it as an
 ordinary adb serial, and is wired into the console's device picker and
-`/api/sandbox/*`. Steps 4-5 (geometry in `trace.json` with a replay guard,
+`/api/sandbox/*`. `run.py` starts one by itself when no device is attached
+(`--sandbox` forces it, `--keep-sandbox` leaves it up for the next run to
+adopt) and installs the target into it, since a container starts empty.
+The console does **not** auto-start one — its buttons are still explicit, but it
+can now satisfy the host prerequisites itself: `scripts/sandbox-setup.sh` run
+through `pkexec` loads binder (or mounts binderfs when the module is
+`[permanent]`), writes the `modules-load.d` / `modprobe.d` / `fstab` entries so
+it survives a reboot, and starts Docker. That turns the binder requirement from
+a pasted command into a button, once per machine. macOS and Windows have no
+binder at all, so there the Setup page's emulator track is the answer rather
+than any command. Steps 4-5 (geometry in `trace.json` with a replay guard,
 excluding the jank class in containers) are **not** done.
 
 Measured on the development laptop, redroid 13.0.0 at 1080x1920 @420dpi, against

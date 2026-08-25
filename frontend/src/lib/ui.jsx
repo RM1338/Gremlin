@@ -30,7 +30,16 @@ export function Spark() {
 }
 
 /* Screenshot served by the FastAPI runner (falls back to a static /screens dir). */
-export function screenUrl(name) { return `/api/screen/${name}`; }
+/* Every run writes the same filenames — step_001.png, bug_001.png — so the URL
+   alone cannot tell one run's frame from the next, and a browser that cached the
+   old bytes keeps showing them. `no-cache` on the response only helps once the
+   browser asks; a stale entry it believes is fresh is never revalidated. Tagging
+   the URL with the run makes them different resources, so there is nothing to
+   mistake. */
+export function screenUrl(name, run) {
+  const v = run ?? (typeof window !== "undefined" && window.__gremlinRun) ?? "";
+  return `/api/screen/${name}${v ? `?v=${v}` : ""}`;
+}
 
 /* Pager for the paged lists. The console does not scroll, so this is how a long
    trace or bug list is moved through. Hidden entirely when everything fits —
