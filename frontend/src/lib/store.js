@@ -268,12 +268,25 @@ export async function startRun(target) {
   }
   set({ running: true, done: false, stopping: false, summary: null, status: "", selected: t || state.selected, live: { steps: [], bugs: [], current: null, screenCount: 0 } });
   try {
-    await fetch("/start", {
+    const r = await fetch("/start", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(t || {}),
     });
-  } catch { set({ running: false }); throw new Error("Could not reach the runner. Is `python -m gremlin.dashboard` running?"); }
+    // A refused start used to be ignored entirely, so `running` stayed true and
+    // the page sat on "waiting for first frame" forever — for a run the server
+    // had already declined to begin. Whatever it says is the thing the user
+    // needs to read.
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      throw new Error(d.error || `the runner refused to start (${r.status})`);
+    }
+  } catch (e) {
+    set({ running: false });
+    throw new Error(e instanceof TypeError
+      ? "Could not reach the runner. Is `python -m gremlin.dashboard` running?"
+      : e.message);
+  }
 }
 
 /* Ask the runner to wind the current run down. The run does NOT end here: the

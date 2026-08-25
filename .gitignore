@@ -17,6 +17,14 @@ frontend/dist/
 # Covers the atomic-write temp files (settings.local.json.tmp.NNNN.XXXX) as well
 # as the settings themselves — the bare name alone let one get committed.
 .claude/settings.local.json*
+
+# Agent skills installed by `npx skills add`. They are one developer's tooling,
+# not the project's — and CLAUDE.md's rule is that nothing under .claude/ is
+# committed. The lockfile records versions for whoever installed them.
+.agents/
+.claude/skills/
+.kiro/
+skills-lock.json
 .DS_Store
 *.log
 

@@ -115,6 +115,7 @@ export function SiteNav() {
           </div>
         </div>
         <NavLink to="/pricing">Pricing</NavLink>
+        <NavLink to="/benchmark">Benchmark</NavLink>
         <NavLink to="/blog">Blog</NavLink>
         <NavLink to="/about">About</NavLink>
         <NavLink to="/contact">Contact</NavLink>

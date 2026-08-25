@@ -4,7 +4,6 @@ import NibScene from "../lib/NibScene.jsx";
 import { SiteNav, SiteFooter, DotField, FaqList, USE_CASES } from "../lib/SiteChrome.jsx";
 import { Bolt, Eye, Bug, Route, Bars, Check, Brain, Clock, Doc } from "../lib/icons.jsx";
 import { isAuthed } from "../lib/auth.js";
-import BenchmarkSection from "../lib/BenchmarkSection.jsx";
 
 /* The page is built around the one idea the product actually rests on: the
  * model decides where to go, the log decides what is broken.
@@ -210,7 +209,25 @@ export default function Landing() {
         </div>
       </section>
 
-      <BenchmarkSection />
+      <section className="section" id="proof">
+        <h2 className="section-title">Measured, not asserted</h2>
+        <p className="section-lede">
+          Three arms, one action budget, the same cold start &mdash; so the model&rsquo;s contribution is a
+          number rather than a claim.
+        </p>
+        <div className="proof-box">
+          <ul>
+            <li><b>Android&rsquo;s Monkey</b> &mdash; random taps, the standard baseline.</li>
+            <li><b>Gremlin without the model</b> &mdash; accessibility grounding and coverage memory only.</li>
+            <li><b>Gremlin</b> &mdash; the full agent.</li>
+          </ul>
+          <p>
+            The second arm is the honest one: it isolates what the vision model actually
+            contributes, rather than crediting it for what the coverage bookkeeping does.
+          </p>
+          <Link className="btn btn-primary" to="/benchmark">See the numbers &rarr;</Link>
+        </div>
+      </section>
 
       <section className="section">
         <h2 className="section-title">Where your app&rsquo;s screens go</h2>

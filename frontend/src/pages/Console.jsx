@@ -75,7 +75,7 @@ export default function Console() {
         <div className="nav-label">Configure</div>
         {link("/app/settings", <Wrench />, "Settings")}
         <div className="nav-label">Evidence</div>
-        <a className="nav-item" href="/#proof" target="_blank" rel="noreferrer">
+        <a className="nav-item" href="/benchmark" target="_blank" rel="noreferrer">
           <Doc /><span>Benchmark</span>
         </a>
         <div className="nav-label">Help</div>
@@ -101,7 +101,7 @@ export default function Console() {
           <div className="topbar-spacer" />
           <DevicePicker st={st} disabled={st.running} onNotify={flash} />
           <TargetPicker targets={st.targets} selected={st.selected} disabled={st.running} onPick={selectTarget}
-            defaultOpen={new URLSearchParams(loc.search).has("apps")} />
+            defaultOpen={new URLSearchParams(loc.search).has("apps")} root={st.projectsRoot} />
           {st.running ? (
             <button className="btn btn-danger" onClick={onStop} disabled={st.stopping}>
               {st.stopping ? <><span className="pulse live" /> Stopping…</> : <><Stop /> Stop run</>}
@@ -294,7 +294,7 @@ function DevicePicker({ st, disabled, onNotify }) {
   );
 }
 
-function TargetPicker({ targets, selected, disabled, onPick, defaultOpen = false }) {
+function TargetPicker({ targets, selected, disabled, onPick, defaultOpen = false, root }) {
   const [open, setOpen] = useState(defaultOpen);
   const [q, setQ] = useState("");
   const ref = useRef(null);
@@ -306,7 +306,17 @@ function TargetPicker({ targets, selected, disabled, onPick, defaultOpen = false
   useEffect(() => { if (!open) setQ(""); }, [open]);
 
   if (!targets || targets.length === 0) {
-    return <div className="tp-btn tp-empty" title="No apps detected (is a device connected?)"><Screens /> no app detected</div>;
+    // Say where we looked. "No apps detected" on its own sent someone hunting a
+    // device problem when the real answer was that GREMLIN_PROJECTS_ROOT pointed
+    // at a directory the fixtures had been moved out of — a scan that found
+    // nothing, reported as if nothing existed.
+    return (
+      <div className="tp-btn tp-empty"
+           title={`No app projects under ${root || "the projects root"}, and nothing installed on the device. `
+                  + `Change GREMLIN_PROJECTS_ROOT in Settings, or install an app on the device.`}>
+        <Screens /> no app detected
+      </div>
+    );
   }
 
   const needle = q.trim().toLowerCase();

@@ -2,14 +2,13 @@ import { useEffect, useRef } from "react";
 import { useStore } from "./useStore.js";
 import { evalArms, loadState } from "./store.js";
 
-/* The benchmark, as a landing-page section rather than a console page.
+/* The measured results, rendered wherever a page asks for them.
  *
- * It used to live behind sign-in, on a fixed-height console page that does not
- * scroll — where a per-defect table and a per-seed table had nowhere to go and
- * overlapped everything under them. It also hid the one thing a reader most
- * wants before trying the tool. A scrolling marketing page has room for both
- * tables and an audience for them, so the page moved rather than the layout
- * being fought.
+ * The results block only — the page around it supplies the heading and the
+ * method. It used to live behind sign-in, on a fixed-height console page that
+ * does not scroll, where the per-defect and per-seed tables had nowhere to go
+ * and overlapped everything under them. It also hid the one thing a reader most
+ * wants before trying the tool.
  *
  * Two questions live here, and they are not the same question:
  *   1. Does a reasoning agent beat random tapping?  vision vs monkey
@@ -49,13 +48,7 @@ export default function BenchmarkSection() {
   const g = arms?.vision, c = arms?.coverage, m = arms?.monkey;
 
   return (
-    <section className="section" id="proof" ref={ref}>
-      <h2 className="section-title">Measured, not asserted</h2>
-      <p className="section-lede">
-        Three arms, one action budget, the same cold start &mdash; so the model&rsquo;s contribution is a
-        number rather than a claim.
-      </p>
-
+    <section className="section" id="results" ref={ref}>
       <div className="proof-box">
         <ul>
           <li><b>Android&rsquo;s Monkey</b> &mdash; random taps, the standard baseline.</li>

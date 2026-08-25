@@ -8,6 +8,7 @@ import MascotSheet from "./pages/MascotSheet.jsx";
 import UseCases from "./pages/UseCases.jsx";
 import Pricing from "./pages/Pricing.jsx";
 import Blog from "./pages/Blog.jsx";
+import BenchmarkPage from "./pages/BenchmarkPage.jsx";
 import About from "./pages/About.jsx";
 import Contact from "./pages/Contact.jsx";
 import SignIn from "./pages/SignIn.jsx";
@@ -30,6 +31,7 @@ const router = createBrowserRouter([
   { path: "/use-cases", element: <UseCases /> },
   { path: "/pricing", element: <Pricing /> },
   { path: "/blog", element: <Blog /> },
+  { path: "/benchmark", element: <BenchmarkPage /> },
   { path: "/about", element: <About /> },
   { path: "/contact", element: <Contact /> },
   { path: "/mascot", element: <MascotSheet /> },
