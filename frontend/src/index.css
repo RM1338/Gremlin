@@ -702,42 +702,62 @@ button { font-family: inherit; }
    everything that reads off it stacks down the narrow one, so the two columns
    come out roughly level instead of one tall card beside a short orphan.
    align-items:start keeps each card as tall as what is in it. */
-/* The benchmark lives on the landing page now, where the page scrolls and the
-   tables have somewhere to go. These lay it out in a marketing section rather
-   than the console's fixed-height grid, which is what they were overflowing. */
-.bench-cards { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 18px; align-items: start; }
-.bench-cards .col { display: flex; flex-direction: column; gap: 18px; min-width: 0; }
-.bench-wide { margin-top: 18px; }
-.bench-runs { margin-top: 18px; border: 1px solid var(--hair); border-radius: var(--r-md);
+/* ---- Benchmark page --------------------------------------------------------
+   One column of decreasing importance: three numbers, a chart, a table, then
+   the provenance and the raw samples. The earlier version was a grid of
+   competing cards inside a console page that does not scroll, which is how the
+   tables ended up overlapping everything beneath them. */
+.bench > * + * { margin-top: 22px; }
+.bench-flag { margin: 0; padding: 11px 15px; border-radius: var(--r-md); font: 12.5px/1.5 var(--sans);
+  border: 1px solid color-mix(in srgb, var(--layout) 40%, var(--hair));
+  background: color-mix(in srgb, var(--layout) 7%, var(--surface-1)); color: var(--layout); }
+.bench-pending { padding: 20px 22px; border-radius: var(--r-md); border: 1px dashed var(--hair);
+  background: var(--surface-1); color: var(--muted); font: 13.5px/1.7 var(--sans); max-width: 64ch; }
+.bench-pending b { color: var(--ink); }
+
+/* The headline claims. Big number, one label, one sentence — nothing competes. */
+.bench-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 18px; }
+.bench-stat { padding: 20px 22px; border: 1px solid var(--hair); border-radius: var(--r-md);
+  background: var(--surface-1); min-width: 0; }
+.bench-stat b { display: block; font: 600 40px/1 var(--sans); letter-spacing: -.045em; color: var(--ink); }
+.bench-stat b i { font: inherit; font-style: normal; font-size: 24px; color: var(--muted); }
+.bench-stat span { display: block; margin-top: 8px; font: 500 13px var(--sans); color: var(--ink-dim); }
+.bench-stat p { margin: 10px 0 0; font: 12.5px/1.6 var(--sans); color: var(--muted); }
+
+.bench-chart { padding: 22px 24px; }
+.bench-caption { margin: 16px 0 0; font: 12px/1.6 var(--sans); color: var(--muted); }
+
+/* Bars carry their own legend, so the separate swatch list is gone. */
+/* Wider than the console's bars were: the label carries a second line naming
+   the arm's configuration, and the value carries its ± spread. */
+.bench-bar { grid-template-columns: minmax(120px, 170px) 1fr minmax(64px, auto); align-items: center; gap: 16px; }
+.bench-bar .bar-track { height: 26px; }
+.bench-bar .bn { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.bench-bar .bn b { font: 500 13px var(--sans); color: var(--ink); }
+.bench-bar .bn i { font: 11px var(--mono); font-style: normal; color: var(--muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bench-bar .bar-val i { font: 11px var(--mono); font-style: normal; color: var(--muted); }
+
+/* Provenance: required, but it is not the finding. One quiet line. */
+.bench-prov { margin: 0; font: 11.5px var(--mono); color: var(--muted); word-break: break-word; }
+
+.bench-runs { border: 1px solid var(--hair); border-radius: var(--r-md);
   background: var(--surface-1); padding: 14px 18px; }
 .bench-runs summary { cursor: pointer; font: 500 13px var(--sans); color: var(--ink-dim); }
 .bench-runs summary:hover { color: var(--ink); }
-.proof-pending, .proof-demo { margin-top: 18px; padding: 14px 18px; border-radius: var(--r-md);
-  border: 1px dashed var(--hair); background: var(--surface-1); color: var(--muted);
-  font: 13px/1.6 var(--sans); }
-.proof-demo { border-style: solid; border-color: color-mix(in srgb, var(--layout) 40%, var(--hair));
-  color: var(--layout); }
-@media (max-width: 900px) { .bench-cards { grid-template-columns: minmax(0, 1fr); } }
+.bench-runs[open] summary { margin-bottom: 6px; }
 
-/* Benchmark provenance strip: what the number was measured on. A benchmark
-   without its environment is a rumour, and screen geometry in particular changes
-   the layout-defect count outright. */
-.bench-env { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1px;
-  background: var(--hair); border: 1px solid var(--hair); border-radius: var(--r-md);
-  overflow: hidden; margin-bottom: 18px; }
-.bench-env-cell { background: var(--surface-1); padding: 10px 13px; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
-.bench-env-cell .k { font: 10.5px var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
-.bench-env-cell .v { font: 12.5px var(--mono); color: var(--ink); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.bench-method-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 22px 34px; }
+.bench-method-list b { display: block; font: 600 13.5px var(--sans); color: var(--ink); }
+.bench-method-list p { margin: 7px 0 0; font: 13px/1.7 var(--sans); color: var(--muted); max-width: 46ch; }
 
-/* Per-defect and per-seed tables. Wide content scrolls in its own box so the
-   page itself never scrolls sideways. */
-.bench-table-wrap { overflow-x: auto; margin-top: 14px; }
+.bench-table-wrap { overflow-x: auto; margin-top: 16px; }
 .bench-table { width: 100%; border-collapse: collapse; font: 12px var(--mono); }
 .bench-table th { text-align: left; font: 500 10.5px var(--mono); color: var(--muted);
-  text-transform: uppercase; letter-spacing: .06em; padding: 0 12px 8px 0; white-space: nowrap; }
-.bench-table td { padding: 7px 12px 7px 0; border-top: 1px solid var(--hair); color: var(--ink-dim); white-space: nowrap; }
-.bench-table td.defect { color: var(--ink); max-width: 320px; overflow: hidden; text-overflow: ellipsis; }
-.rate { display: inline-block; padding: 1px 7px; border-radius: 5px; background: var(--surface-2);
+  text-transform: uppercase; letter-spacing: .06em; padding: 0 14px 9px 0; white-space: nowrap; }
+.bench-table td { padding: 8px 14px 8px 0; border-top: 1px solid var(--hair); color: var(--ink-dim); white-space: nowrap; }
+.bench-table td.defect { color: var(--ink); max-width: 340px; overflow: hidden; text-overflow: ellipsis; }
+.rate { display: inline-block; padding: 1px 8px; border-radius: 5px; background: var(--surface-2);
   border: 1px solid var(--hair); }
 .rate.full { color: var(--brand); border-color: color-mix(in srgb, var(--brand) 40%, var(--hair)); }
 .rate.none { color: var(--muted); }
@@ -748,27 +768,6 @@ button { font-family: inherit; }
 .bar-err::before { content: ""; position: absolute; top: 50%; left: 0; right: 0;
   border-top: 1.5px solid var(--ink-dim); }
 
-.bench-grid { display: grid; grid-template-columns: 1.45fr 1fr; gap: 12px;
-  flex: 1; min-height: 0; align-items: start; align-content: start; }
-@media (max-width: 900px){ .bench-grid { grid-template-columns: 1fr; } }
-.bench-grid > * { min-height: 0; }
-.bench-grid .col { display: flex; flex-direction: column; gap: 8px; min-height: 0; }
-.bench-grid .card, .bench-grid .callout { padding: 12px 14px; }
-.bench-grid .callout .big { font-size: 32px; }
-.bench-grid .callout p { font-size: 12px; margin-top: 6px; }
-.bench-grid .kv { padding: 4px 0; font-size: 12.5px; }
-.bench-grid .note { font-size: 12px; }
-@media (max-width: 900px){ .bench-grid { grid-template-columns: 1fr; } }
-/* On a short screen something has to give, and nothing here scrolls. The prose
-   goes first and the numbers stay — the explanations are context, the figures
-   are the result. */
-@media (max-height: 820px) {
-  .bench-grid .callout p,
-  .bench-grid .card > .note { display: none; }
-  .bench-grid .card, .bench-grid .callout { padding: 10px 13px; }
-  .bench-grid .callout .big { font-size: 27px; }
-  .bench-grid .kv { padding: 3px 0; }
-}
 .chart { padding: 14px 16px; display: flex; flex-direction: column; }
 .chart-title { font-size: 15px; font-weight: 650; } .chart-sub { font-size: 12px; color: var(--muted); margin-top: 2px; margin-bottom: 14px; }
 .bars { display: flex; flex-direction: column; gap: 11px; }
