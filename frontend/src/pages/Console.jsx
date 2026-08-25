@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import Logo from "../lib/Logo.jsx";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { Home, Live, List, Bug, Bolt, Doc, Stop, LogOut, Chevron, Check, Screens, Book, Wrench } from "../lib/icons.jsx";
+import { Home, Live, List, Bug, Bolt, Stop, LogOut, Chevron, Check, Screens, Book, Wrench } from "../lib/icons.jsx";
 import { useStore } from "../lib/useStore.js";
 import { loadState, connectWS, startRun, stopRun, loadTargets, selectTarget,
   loadDevices, selectDevice, startEmulator, stopEmulator,
@@ -74,10 +74,6 @@ export default function Console() {
         {link("/app/bugs", <Bug />, "Bugs", <span className="count">{bugs}</span>)}
         <div className="nav-label">Configure</div>
         {link("/app/settings", <Wrench />, "Settings")}
-        <div className="nav-label">Evidence</div>
-        <a className="nav-item" href="/benchmark" target="_blank" rel="noreferrer">
-          <Doc /><span>Benchmark</span>
-        </a>
         <div className="nav-label">Help</div>
         {link("/app/setup", <Book />, "Setup")}
 

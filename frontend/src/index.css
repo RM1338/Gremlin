@@ -738,16 +738,25 @@ button { font-family: inherit; }
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .bench-bar .bar-val i { font: 11px var(--mono); font-style: normal; color: var(--muted); }
 
-/* Provenance: required, but it is not the finding. One quiet line. */
-.bench-prov { margin: 0; font: 11.5px var(--mono); color: var(--muted); word-break: break-word; }
+/* Provenance: required, but it is not the finding. Labelled pairs, quiet. */
+.bench-prov { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px 26px; margin: 0; padding: 16px 20px; border: 1px solid var(--hair);
+  border-radius: var(--r-md); background: var(--surface-1); }
+.bench-prov dt { font: 10.5px var(--mono); color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.bench-prov dd { margin: 3px 0 0; font: 12.5px var(--mono); color: var(--ink-dim); word-break: break-word; }
 
-.bench-runs { border: 1px solid var(--hair); border-radius: var(--r-md);
-  background: var(--surface-1); padding: 14px 18px; }
-.bench-runs summary { cursor: pointer; font: 500 13px var(--sans); color: var(--ink-dim); }
-.bench-runs summary:hover { color: var(--ink); }
-.bench-runs[open] summary { margin-bottom: 6px; }
 
-.bench-method-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 22px 34px; }
+/* Two by two. auto-fit gave four items three columns and left one stranded
+   on a row of its own, which read as a mistake rather than a layout. */
+/* Capability matrix. Wraps rather than truncates — these cells are short
+   phrases, not identifiers, so an ellipsis would hide the answer. */
+.bench-table.compare td, .bench-table.compare th { white-space: normal; vertical-align: top;
+  min-width: 130px; font: 12.5px/1.6 var(--sans); }
+.bench-table.compare td.q { color: var(--ink); font-weight: 500; min-width: 175px; max-width: none; }
+.bench-table.compare tbody tr:hover { background: var(--surface-1); }
+
+.bench-method-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 26px 40px; }
+@media (max-width: 760px) { .bench-method-list { grid-template-columns: minmax(0, 1fr); } }
 .bench-method-list b { display: block; font: 600 13.5px var(--sans); color: var(--ink); }
 .bench-method-list p { margin: 7px 0 0; font: 13px/1.7 var(--sans); color: var(--muted); max-width: 46ch; }
 
@@ -762,11 +771,6 @@ button { font-family: inherit; }
 .rate.full { color: var(--brand); border-color: color-mix(in srgb, var(--brand) 40%, var(--hair)); }
 .rate.none { color: var(--muted); }
 
-/* One standard deviation each way, on the bar's own scale. */
-.bar-err { position: absolute; top: 50%; height: 9px; transform: translateY(-50%);
-  border-left: 1.5px solid var(--ink-dim); border-right: 1.5px solid var(--ink-dim); }
-.bar-err::before { content: ""; position: absolute; top: 50%; left: 0; right: 0;
-  border-top: 1.5px solid var(--ink-dim); }
 
 .chart { padding: 14px 16px; display: flex; flex-direction: column; }
 .chart-title { font-size: 15px; font-weight: 650; } .chart-sub { font-size: 12px; color: var(--muted); margin-top: 2px; margin-bottom: 14px; }
@@ -806,7 +810,7 @@ button { font-family: inherit; }
    viewport holds and nothing here scrolls, so the guide advances instead. */
 .setup-split { display: grid; grid-template-columns: 258px 1fr; gap: 16px; flex: 1; min-height: 0; }
 @media (max-width: 900px){ .setup-split { grid-template-columns: 1fr; } }
-.setup-rail { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; min-height: 0; }
+.setup-rail { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; min-height: 0; min-width: 0; overflow-y: auto; }
 .setup-railbtn { display: flex; align-items: center; gap: 11px; width: 100%; text-align: left;
   padding: 7px 10px; border-radius: var(--r-md); border: 1px solid transparent; background: none;
   color: var(--muted); font-size: 13px; cursor: pointer; transition: .15s var(--ease); }
@@ -816,10 +820,17 @@ button { font-family: inherit; }
 .setup-railbtn .setup-num { width: 24px; height: 24px; font-size: 12px; flex: none; }
 .setup-railbtn.done .setup-num { background: var(--brand); color: var(--on-brand); border-color: transparent; }
 .setup-railbtn.done .setup-num svg { width: 13px; height: 13px; }
+/* min-width:0 is load-bearing: a grid item defaults to min-width:auto, so one
+   wide <pre> (the PowerShell PATH line is 120 characters) stretched this column
+   past the viewport instead of scrolling inside its own box. */
 .setup-panel { border: 1px solid var(--hair); border-radius: var(--r-lg); background: var(--surface-1);
-  padding: 18px 22px; display: flex; flex-direction: column; min-height: 0; }
+  padding: 18px 22px; display: flex; flex-direction: column; min-height: 0; min-width: 0; }
 .setup-panel > h3 { margin: 0 0 12px; font-size: 17px; }
-.setup-panel .setup-content { flex: 1; min-height: 0; padding-top: 0; }
+/* The guide was written when every step was short enough to fit, so the panel
+   never scrolled. The emulator track's steps are not short, and without this
+   they ran straight through the Back/Next bar and out the bottom of the card. */
+.setup-panel .setup-content { flex: 1; min-height: 0; min-width: 0; padding-top: 0;
+  overflow-y: auto; overflow-x: hidden; padding-right: 10px; }
 .setup-nav { display: flex; align-items: center; gap: 14px; margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--hair); }
 .setup-count { font: 12px var(--mono); color: var(--muted); margin-right: auto; }
 .setup-fin { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--brand); }

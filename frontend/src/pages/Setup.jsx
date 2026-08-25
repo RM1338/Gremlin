@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { Bolt, Check } from "../lib/icons.jsx";
 
 /* Three ways to get a device, and they are genuinely different guides — not one
@@ -292,6 +293,7 @@ export default function Setup() {
   // Prose does not fit a viewport and the console does not scroll — so the guide
   // is a rail plus one step at a time. Which is also how people follow
   // instructions: one thing, then the next.
+  const nav = useNavigate();
   const [track, setTrack] = useState("phone");
   const [i, setI] = useState(0);
   const steps = TRACKS.find((t) => t.id === track).steps;
@@ -345,7 +347,7 @@ export default function Setup() {
               <span className="setup-count">Step {i + 1} of {steps.length}</span>
               {i < steps.length - 1
                 ? <button className="btn btn-primary" onClick={() => setI(i + 1)}>Next →</button>
-                : <span className="setup-fin"><Check /> That's it — start a run from the top bar.</span>}
+                : <button className="btn btn-primary" onClick={() => nav("/app")}>Finish</button>}
             </div>
           </div>
         </div>

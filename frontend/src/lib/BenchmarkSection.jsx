@@ -115,7 +115,7 @@ export default function BenchmarkResults() {
         <p className="bench-caption">
           {proto
             ? <>Each arm run {proto.repeats}× over seeds {proto.seeds?.[0]}&ndash;{proto.seeds?.[proto.seeds.length - 1]};
-                the whisker is one standard deviation.
+                the bar is the mean and ± is one standard deviation across those runs.
                 {g.failed ? ` ${g.failed} run(s) failed and are excluded — n is what was measured.` : ""}</>
             : <>A single run per arm — no spread to report. Re-run with <code>--repeats 5</code>.</>}
         </p>
@@ -156,27 +156,34 @@ export default function BenchmarkResults() {
         </div>
       )}
 
-      {/* Provenance as one quiet line, not a grid of tiles. It has to be here —
-          overflow defects are screen-size dependent, so a number without its
-          geometry is not comparable to anything — but it is not the finding. */}
+      {/* What the run was measured on. It reads as debris unlabelled, but it
+          cannot be dropped: overflow defects are screen-size dependent, so the
+          same app on a different handset is a different measurement and a number
+          without its geometry is not comparable to anything. Labelled pairs,
+          folded into the table card's footer rhythm rather than floating. */}
       {env && (
-        <p className="bench-prov">
-          {[data.app?.package,
-            data.app?.commit && `@ ${data.app.commit}`,
-            `${env.kind}${env.width ? ` ${env.width}×${env.height}` : ""}`,
-            env.android && `Android ${env.android}`,
-            data.vision_model?.model || data.vision_model?.provider,
-            proto && `${proto.actions} actions × ${proto.repeats} seeds`,
-            (data.generated_at || "").slice(0, 10),
-          ].filter(Boolean).join("  ·  ")}
-        </p>
+        <dl className="bench-prov">
+          {[["App", data.app?.package],
+            ["Build", data.app?.commit],
+            ["Device", `${env.kind}${env.width ? ` · ${env.width}×${env.height}` : ""}${env.android ? ` · Android ${env.android}` : ""}`],
+            ["Vision model", data.vision_model?.model || data.vision_model?.provider],
+            ["Budget", proto && `${proto.actions} actions × ${proto.repeats} seeds`],
+            ["Measured", (data.generated_at || "").slice(0, 10)],
+          ].filter(([, v]) => v).map(([k, v]) => (
+            <div key={k}><dt>{k}</dt><dd>{v}</dd></div>
+          ))}
+        </dl>
       )}
 
       {proto && (
-        <details className="bench-runs">
-          <summary>
+        <div className="card bench-chart">
+          <div className="chart-title">
             Every individual run ({present.reduce((n, k) => n + (arms[k].runs?.length || 0), 0)} samples)
-          </summary>
+          </div>
+          <div className="chart-sub">
+            The samples behind the means above. The spread is the finding, not noise to be averaged
+            away — so it is on the page, not behind a disclosure.
+          </div>
           <div className="bench-table-wrap">
             <table className="bench-table">
               <thead>
@@ -198,7 +205,7 @@ export default function BenchmarkResults() {
               </tbody>
             </table>
           </div>
-        </details>
+        </div>
       )}
     </section>
   );
@@ -219,9 +226,10 @@ function fmtSigned(n) {
 
 function BarRow({ name, sub, val, max, color, sd, n }) {
   const pct = Math.max(4, (val / max) * 100);
-  // One standard deviation each way, on the bar's own scale. Absent for a single
-  // sample, because there is nothing to draw.
-  const err = sd != null && sd > 0 ? (sd / max) * 100 : 0;
+  // The spread used to be drawn as an error bar across the track. It read as a
+  // stray line: on a dark fill it nearly vanished, on a short bar it jutted out
+  // past the end, so the same statistic looked like two different marks. The
+  // "± sd" beside the number says it once and unambiguously.
   return (
     <div className="bar-row bench-bar">
       <div className="bar-name">
@@ -230,12 +238,10 @@ function BarRow({ name, sub, val, max, color, sd, n }) {
       </div>
       <div className="bar-track">
         <div className="bar-fill" data-w={`${pct}%`} style={{ background: color }} />
-        {err > 0 && (
-          <div className="bar-err" title={`± ${sd} over ${n} seeds`}
-               style={{ left: `${Math.max(0, pct - err)}%`, width: `${Math.min(100, err * 2)}%` }} />
-        )}
       </div>
-      <div className="bar-val">{val}{sd != null && sd > 0 && <i> ± {sd}</i>}</div>
+      <div className="bar-val" title={n ? `mean of ${n} seeds` : undefined}>
+        {val}{sd != null && sd > 0 && <i> ± {sd}</i>}
+      </div>
     </div>
   );
 }
