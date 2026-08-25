@@ -92,9 +92,22 @@ def run_gremlin(cfg: Config, label: str = "gremlin", seed: int = 0) -> Result:
     t0 = time.time()
     explorer = Explorer(cfg)
     bugs = explorer.run()
+    # A run the model quota killed at step 1 is not a sample of what the agent
+    # does in 30 actions — it is a sample of what it does in one. The explorer
+    # ends gracefully on a ModelError by design, which is right for a run and
+    # wrong for a benchmark: it returns normally, so without this the truncated
+    # run was averaged in as a legitimate low score and made the vision arm look
+    # worse than the no-model arm it is being compared against. Recording it as
+    # failed excludes it from the mean and makes n say what was measured.
+    #
+    # `_run_note` is set only by a model outage or an explicit stop, both of
+    # which mean the budget was not spent. Coverage finishing early sets
+    # `_complete` instead and stays a valid sample.
+    note = explorer._run_note
     return Result(label, cfg.max_steps, explorer.memory.count, len(bugs),
                   round(time.time() - t0, 1), seed=seed,
-                  bug_keys=sorted(explorer.bugs))
+                  bug_keys=sorted(explorer.bugs),
+                  error=f"ended early at step {len(explorer.trace)}: {note}"[:200] if note else "")
 
 
 def run_monkey(cfg: Config, actions: int, burst: int = 5, throttle_ms: int = 400,

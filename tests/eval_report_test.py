@@ -54,4 +54,20 @@ assert rates["crash"]["monkey"]["found_in"] == 0
 # The failed seed must not inflate the denominator into "0 of 3".
 assert rates["crash"]["monkey"]["of"] == 2
 
+# --- a run the quota truncated is a failed sample, not a low score -----------
+# The explorer ends gracefully on a ModelError, so run_gremlin returns normally
+# and the run looks complete. Averaging it in made the vision arm score below
+# the no-model arm it is being compared against, purely because Gemini's daily
+# free tier ran out partway through the benchmark.
+truncated = _aggregate([
+    Result("gremlin-vision", 30, 8, 3, 100.0, seed=0, bug_keys=["overflow"]),
+    Result("gremlin-vision", 30, 1, 0, 4.0, seed=1,
+           error="ended early at step 1: quota exhausted"),
+    Result("gremlin-vision", 30, 1, 0, 4.0, seed=2,
+           error="ended early at step 1: quota exhausted"),
+])
+assert truncated["completed"] == 1 and truncated["failed"] == 2
+assert truncated["screens"]["mean"] == 8, truncated["screens"]
+assert truncated["screens"]["sd"] == 0.0, "one surviving sample has no spread"
+
 print("eval report: OK")
