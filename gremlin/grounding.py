@@ -28,9 +28,10 @@ class Element:
     cy: int  # center y
     clickable: bool
     bounds: tuple[int, int, int, int]
+    editable: bool = False  # a text input (EditText) — a login/search field
 
     def describe(self) -> str:
-        kind = "button" if self.clickable else "text"
+        kind = "field" if self.editable else "button" if self.clickable else "text"
         return f"[{self.index}] {kind}: {self.label!r}"
 
 
@@ -65,7 +66,9 @@ def dump_elements(device: Device) -> list[Element]:
     for node in root.iter("node"):
         label = (node.get("content-desc") or node.get("text") or "").strip()
         clickable = node.get("clickable") == "true"
-        if not label and not clickable:
+        # Flutter and native text fields both surface as EditText in the tree.
+        editable = "edittext" in (node.get("class") or "").lower()
+        if not label and not clickable and not editable:
             continue
         bounds = _parse_bounds(node.get("bounds", ""))
         if not bounds:
@@ -85,6 +88,7 @@ def dump_elements(device: Device) -> list[Element]:
                 cy=(y1 + y2) // 2,
                 clickable=clickable,
                 bounds=bounds,
+                editable=editable,
             )
         )
     return elements

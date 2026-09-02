@@ -111,7 +111,12 @@ def _start_run() -> None:
     def worker() -> None:
         global _explorer
         try:
-            if sandbox.is_sandbox(_cfg.serial):
+            # A web run has no package, no device and nothing to install. The
+            # serial left over from an earlier device run still pointed at the
+            # sandbox, so this tried to build and install a *website* into a
+            # container and failed with "debtcalculatorpro.com is not installed
+            # in the sandbox". The platform decides, not the stale serial.
+            if _cfg.platform != "web" and sandbox.is_sandbox(_cfg.serial):
                 # A container starts empty, so there is nothing to explore until
                 # the target is built and pushed into it. The CLI has always done
                 # this; the console used to launch a package that was not there.
@@ -183,7 +188,23 @@ async def start(request: Request):
             body = await request.json()
         except Exception:
             body = None
-        if body and body.get("package"):
+        if body and body.get("url"):
+            # A web target has no package to install, no activity to resolve and
+            # no device to pick — so it returns before every adb call below.
+            # Those calls are not merely unnecessary here: with a phone and the
+            # sandbox both attached they fail outright, which is how testing a
+            # website came to depend on which cables were plugged in.
+            from . import web as _web
+            url = str(body["url"]).strip()
+            if not url.startswith(("http://", "https://")):
+                url = "http://" + url
+            _cfg.package = _web.origin_of(url)
+            _cfg.activity = url
+            _cfg.platform = "web"
+            _cfg.scribe_root = (Path(body["source_root"]) if body.get("source_root")
+                                else PROJECTS_ROOT)
+            _target_name = body.get("name") or _cfg.package
+        elif body and body.get("package"):
             pkg = body["package"]
             _cfg.package = pkg
             # Device-only apps arrive without an activity; resolve it now.
@@ -596,6 +617,11 @@ async def api_state() -> JSONResponse:
             "fixing": _fixing,
             "package": _cfg.package,
             "target_name": _target_name,
+            # The console frames a run in the shape of the thing being driven —
+            # a handset bezel for a device, a browser window for a page — so it
+            # has to be told which, and what address to show in the URL bar.
+            "platform": _cfg.platform,
+            "target_url": _cfg.activity if _cfg.platform == "web" else None,
             "trace": trace,
             "eval": ev,
             "screens": screens,

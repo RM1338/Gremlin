@@ -469,10 +469,19 @@ button { font-family: inherit; }
 .live { display: grid; grid-template-columns: minmax(0, 380px) 1fr; gap: 18px; align-items: stretch;
   flex: 1; min-height: 0; }
 @media (max-width: 940px){ .live { grid-template-columns: 1fr; } }
-.live-main { display: flex; justify-content: center; align-items: center;
+/* Top-aligned, not centred: a frame floating in the middle of a tall column
+   with dead space above and below reads as a layout that lost its footing. */
+.live-main { display: flex; justify-content: center; align-items: flex-start;
   min-height: 0; min-width: 0; }
 /* After a run the summary is the content, so it takes the wide column and fills
    it rather than being centred like a device frame. */
+/* The viewport column is sized for a portrait handset. A landscape browser
+   window in 380px is a postage stamp with the frame unreadable, so a web run
+   gets the wider share — the action stream stays legible either way. */
+/* Web runs give the viewport whatever the stream does not need. A browser frame
+   is the thing you are actually watching, so it gets the room; the stream stays
+   readable at 400px. */
+.live.web { grid-template-columns: minmax(0, 1fr) minmax(300px, 400px); }
 .live.done { grid-template-columns: 1fr minmax(0, 400px); }
 .live.done .live-main { display: block; min-height: 0; overflow: hidden; }
 .live.done .summary { height: 100%; overflow: hidden; margin: 0; }
@@ -485,6 +494,50 @@ button { font-family: inherit; }
 .phone-screen { width: 100%; height: 100%; border-radius: 24px; overflow: hidden; background: #05070a; display: grid; place-items: center; }
 .phone-screen img { width: 100%; height: 100%; object-fit: contain; display: block; }
 .phone-empty { color: var(--faint); font: 12px var(--mono); text-align: center; padding: 20px; }
+/* Mobile or web: the first decision, so it reads as a control rather than a
+   setting tucked away. Both options stay visible; the active one is filled. */
+.modeswitch { display: inline-flex; padding: 3px; border-radius: 9px;
+  border: 1px solid var(--hair); background: var(--surface-1); gap: 2px; }
+.modeswitch-btn { border: 0; background: none; cursor: pointer; color: var(--muted);
+  font: 600 12px var(--sans, inherit); padding: 5px 11px; border-radius: 7px; }
+.modeswitch-btn:hover:not(:disabled) { color: var(--ink); }
+.modeswitch-btn.on { background: var(--panel, #fff); color: var(--ink);
+  box-shadow: 0 1px 2px rgba(0,0,0,.10); }
+.modeswitch-btn:disabled { opacity: .5; cursor: default; }
+.webtarget-scheme { font: 11px var(--mono); color: var(--faint); padding-left: 2px; }
+
+/* The web target: an address, not a choice from a list. Sized to sit quietly
+   beside the pickers rather than compete with them. */
+.webtarget { display: flex; align-items: center; gap: 4px; }
+.webtarget-input { width: 240px; padding: 7px 10px; border-radius: 8px;
+  border: 1px solid var(--hair); background: var(--panel); color: var(--ink);
+  font: 12px var(--mono); }
+.webtarget-input::placeholder { color: var(--faint); }
+.webtarget-input:focus { outline: none; border-color: var(--brand); }
+.webtarget-input:disabled { opacity: .5; }
+.webtarget-go { padding: 7px 9px; }
+
+/* A web run is framed as a browser window. Same job as .phone — hold a frame at
+   its true aspect and never overflow its column — but landscape, so it is
+   width-led where the handset is height-led. */
+.browser { position: relative; margin: 0; max-height: 100%; max-width: 100%;
+  width: 100%; height: auto; border-radius: 12px; overflow: hidden;
+  background: #14171d; box-shadow: var(--shadow-lg), inset 0 0 0 1px rgba(255,255,255,.04);
+  display: flex; flex-direction: column; }
+.browser-bar { display: flex; align-items: center; gap: 7px; padding: 9px 12px;
+  background: #1b1f27; border-bottom: 1px solid rgba(255,255,255,.06); flex: none; }
+.browser-dot { width: 10px; height: 10px; border-radius: 50%; background: #3a4150; flex: none; }
+.browser-dot:first-child { background: #e05a4e; }
+.browser-dot:nth-child(2) { background: #e0a84e; }
+.browser-dot:nth-child(3) { background: #55b86a; }
+.browser-url { flex: 1; margin-left: 8px; padding: 4px 10px; border-radius: 6px;
+  background: #0d1015; color: var(--faint); font: 11px/1.6 var(--mono);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.browser-screen { width: 100%; aspect-ratio: var(--web-aspect, 1280/800);
+  overflow: hidden; background: #05070a; display: grid; place-items: center; min-height: 0; }
+.browser-screen img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.browser-empty { color: var(--faint); font: 12px var(--mono); text-align: center; padding: 20px; }
+
 .spinner { width: 26px; height: 26px; border-radius: 50%; border: 2.5px solid var(--hair); border-top-color: var(--brand); animation: spin .8s linear infinite; margin: 0 auto 14px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .live-right { display: flex; flex-direction: column; gap: 12px; min-width: 0; min-height: 0; }

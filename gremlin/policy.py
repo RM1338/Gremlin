@@ -68,6 +68,51 @@ Reply with ONLY a JSON object, no prose, no code fence:
 COVERAGE_TEXT = "gremlin"
 
 
+# Models answer with the verb they know rather than the one we asked for:
+# qwen2.5vl says "click" about a third of the time, and "press" and "select"
+# turn up too. `Explorer._choose_and_execute` honours the model's pick only when
+# the verb is exactly "tap", so an unrecognised synonym is silently demoted to
+# "the model had no opinion" and the coverage fallback takes the next untapped
+# control instead. That does not fail, it does not warn, and it quietly turns
+# part of the vision arm into the coverage arm — which is fatal for an ablation
+# whose entire purpose is telling those two apart. Normalising here, at the one
+# point every backend's reply passes through, keeps the arms honest.
+_VERB_SYNONYMS = {
+    "click": "tap", "press": "tap", "touch": "tap", "select": "tap",
+    "tap_element": "tap", "input": "type", "enter": "type", "write": "type",
+    "swipe": "scroll", "goback": "back", "go_back": "back", "navigate_back": "back",
+}
+
+
+def canonical_verb(raw: str) -> str:
+    """Map a model's verb onto the four the explorer acts on."""
+    v = str(raw or "").strip().lower().replace("-", "_")
+    return _VERB_SYNONYMS.get(v, v)
+
+
+def canonical_index(raw) -> int | None:
+    """Coerce whatever the model called an index into an int, or None.
+
+    `Explorer._choose_and_execute` does `0 <= decision.index < len(elements)`,
+    which raises TypeError on anything that is not a number — and qwen2.5vl
+    returns `[0]` often enough to kill a run outright. An unusable index must
+    mean "no pick", which the coverage fallback already handles gracefully; it
+    must never mean "crash three steps into a benchmark seed".
+    """
+    if isinstance(raw, bool):        # bool is an int subclass; not an index
+        return None
+    if isinstance(raw, int):
+        return raw
+    if isinstance(raw, float):
+        return int(raw) if raw.is_integer() else None
+    if isinstance(raw, (list, tuple)):
+        return canonical_index(raw[0]) if len(raw) == 1 else None
+    if isinstance(raw, str):
+        s = raw.strip()
+        return int(s) if s.lstrip("-").isdigit() else None
+    return None
+
+
 def decide_coverage_only(_elements: list[Element]) -> Decision:
     """The no-LLM ablation arm (docs/KNOWN_ISSUES.md, G4).
 
@@ -120,8 +165,8 @@ def decide(
         # keeps the trace instead of dying with a stack trace and losing it.
         raise ModelError(f"unparseable reply from the vision model: {e}") from e
     return Decision(
-        verb=str(data.get("verb", "back")),
-        index=data.get("index"),
+        verb=canonical_verb(data.get("verb", "back")),
+        index=canonical_index(data.get("index")),
         text=data.get("text"),
         direction=data.get("direction"),
         reason=str(data.get("reason", "")),

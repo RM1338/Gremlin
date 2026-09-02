@@ -3,7 +3,8 @@ import Logo from "../lib/Logo.jsx";
 import { NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { Home, Live, List, Bug, Bolt, Stop, LogOut, Chevron, Check, Screens, Book, Wrench } from "../lib/icons.jsx";
 import { useStore } from "../lib/useStore.js";
-import { loadState, connectWS, startRun, stopRun, loadTargets, selectTarget,
+import { loadState, connectWS, startRun, startWebRun, stopRun, loadTargets, selectTarget,
+  setMode, setWebUrl,
   loadDevices, selectDevice, startEmulator, stopEmulator,
   startSandbox, stopSandbox, setupSandbox } from "../lib/store.js";
 import { getUser, signOut, initials } from "../lib/auth.js";
@@ -45,6 +46,10 @@ export default function Console() {
     try { await startRun(); nav("/app/live"); }
     catch (e) { flash(e.message); }
   }
+  async function onStartWeb(url) {
+    try { await startWebRun(url); nav("/app/live"); }
+    catch (e) { flash(e.message); }
+  }
   async function onStop() {
     // The run ends on the step boundary, not on the click, so say so — silence
     // here reads as a button that did nothing.
@@ -81,7 +86,13 @@ export default function Console() {
           <div className="status-chip">
             <span className={"pulse " + runState} />
             <span className="label">{st.running ? "Running…" : st.done ? "Run complete" : "Idle"}</span>
-            <span className="val">{st.selected?.package || st.package || "no app selected"}</span>
+            {/* During a web run the app picker still holds whatever Android
+                target was last chosen, so showing its package here names the
+                wrong thing entirely. What is being driven wins. */}
+            <span className="val">{
+              (st.running ? st.platform === "web" : st.mode === "web")
+                ? (st.running ? st.targetUrl : st.webUrl) || "no site entered"
+                : (st.selected?.package || st.package || "no app selected")}</span>
           </div>
           <div className="side-user">
             <div className="avatar">{initials(user)}</div>
@@ -95,15 +106,35 @@ export default function Console() {
         <header className="topbar">
           <div className="crumb"><span>Gremlin</span><Chevron /><span className="here">{TITLES[loc.pathname] || "Overview"}</span></div>
           <div className="topbar-spacer" />
-          <DevicePicker st={st} disabled={st.running} onNotify={flash} />
-          <TargetPicker targets={st.targets} selected={st.selected} disabled={st.running} onPick={selectTarget}
-            defaultOpen={new URLSearchParams(loc.search).has("apps")} root={st.projectsRoot} />
+          {/* The first choice, and it governs the rest of the bar: a mobile run
+              needs a device and an installed app, a web run needs neither.
+              Showing both sets at once was what made the web field look like an
+              afterthought wedged in beside the Android pickers. */}
+          <ModeSwitch mode={st.mode} disabled={st.running} onPick={setMode} />
+          {st.mode === "web" ? (
+            <WebTarget url={st.webUrl} disabled={st.running} onChange={setWebUrl}
+                       onSubmit={onStartWeb} />
+          ) : (
+            <>
+              <DevicePicker st={st} disabled={st.running} onNotify={flash} />
+              <TargetPicker targets={st.targets} selected={st.selected} disabled={st.running} onPick={selectTarget}
+                defaultOpen={new URLSearchParams(loc.search).has("apps")} root={st.projectsRoot} />
+            </>
+          )}
           {st.running ? (
             <button className="btn btn-danger" onClick={onStop} disabled={st.stopping}>
               {st.stopping ? <><span className="pulse live" /> Stopping…</> : <><Stop /> Stop run</>}
             </button>
           ) : (
-            <button className="btn btn-primary" onClick={onStart} disabled={st.selected && !st.selected.installed}>
+            <button className="btn btn-primary"
+              onClick={st.mode === "web" ? () => onStartWeb(st.webUrl) : onStart}
+              disabled={st.mode === "web"
+                ? !st.webUrl.trim()
+                : !!(st.selected && !st.selected.installed
+                     // A fresh sandbox has no apps, but the run builds and
+                     // installs a project target itself — so don't block it.
+                     && !(st.selected.source === "project"
+                          && st.devices?.find((d) => d.serial === st.serial)?.sandbox))}>
               <Bolt /> Start run
             </button>
           )}
@@ -289,6 +320,46 @@ function DevicePicker({ st, disabled, onNotify }) {
     </div>
   );
 }
+
+// A web app is a target with no device, no install and no toolkit to detect —
+// there is nothing to pick from a list, only an address to type. So it gets a
+// field rather than a place in the picker beside apps that had to be found.
+function WebTarget({ url, disabled, onChange, onSubmit }) {
+  // The address lives in the store rather than here so the one Start button in
+  // the bar can launch either kind of run.
+  return (
+    <div className="webtarget">
+      <span className="webtarget-scheme">https://</span>
+      <input
+        type="text"
+        className="webtarget-input"
+        placeholder="localhost:5173  ·  or any site"
+        value={url}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Enter" && url.trim()) onSubmit(url.trim()); }}
+      />
+    </div>
+  );
+}
+
+
+// Mobile or web. Deliberately a segmented control rather than a dropdown: there
+// are two answers, both should be visible, and which one is active decides what
+// the rest of the bar even offers.
+function ModeSwitch({ mode, disabled, onPick }) {
+  return (
+    <div className="modeswitch" role="group" aria-label="What to test">
+      {[["mobile", "Mobile app"], ["web", "Website"]].map(([id, label]) => (
+        <button key={id} type="button" disabled={disabled}
+          className={"modeswitch-btn" + (mode === id ? " on" : "")}
+          aria-pressed={mode === id}
+          onClick={() => onPick(id)}>{label}</button>
+      ))}
+    </div>
+  );
+}
+
 
 function TargetPicker({ targets, selected, disabled, onPick, defaultOpen = false, root }) {
   const [open, setOpen] = useState(defaultOpen);

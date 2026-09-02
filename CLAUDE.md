@@ -22,6 +22,22 @@ run holds the screen awake and drives taps for minutes at a time, so don't start
 one against an app that is not the target, and don't leave `svc power stayon`
 set after a run ends.
 
+## Platforms
+
+`GREMLIN_PLATFORM` / a target's detected toolkit selects the failure vocabulary:
+`flutter`, `react-native`, or `web`.
+
+**Web needs no device.** `python run.py --url http://localhost:5173` drives a
+browser through `gremlin/web.py` — Playwright for the verbs, the DevTools
+protocol for the oracle. It uses the *system* Chrome (`channel="chrome"`) rather
+than downloading Playwright's own, because this machine is short of disk. The
+CDP events are rendered as log-shaped lines on purpose, so everything downstream
+of the oracle (classification, dedup, reporter, trace, console) is shared with
+Android rather than duplicated.
+
+Tier 2 does not cover web yet: a page is served, not built, so the
+rebuild/replay gates have nothing to rebuild.
+
 ## Model backend
 
 `LLM_PROVIDER` selects the vision backend: `gemini`, `groq`, or `local`.

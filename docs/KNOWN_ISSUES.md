@@ -418,3 +418,112 @@ calibration below is still owed.
 **Fix.** Calibrate the remaining threshold on the fixtures alongside G7, and
 report the gate's false-accept and false-reject rates on the adversarial suite
 (G9) rather than presenting the number as given.
+
+---
+
+## G14 — The Monkey baseline was crippled by our own harness
+
+**Severity:** high · **Status:** fixed · **Threatens:** M2, and the headline claim
+
+The 26 Aug ablation reported `monkey 1.0 ± 0.0` distinct screens against
+`gremlin 5.0 ± 0.0`, which would be a 5× result. Zero variance across five seeds
+is the tell: a random walk that lands on exactly one screen every time is not
+exploring badly, it is not exploring.
+
+Two defects in `run_monkey`, both biasing the same way — against the baseline,
+in favour of our number.
+
+**The seed replayed.** The Monkey was fired in bursts of five, each invocation
+passing the same `-s seed`. `monkey -s` seeds the PRNG, so identical seed and
+identical event count reproduce identical events: six bursts of five meant the
+same five taps performed six times. If those five did not leave the first
+screen, nothing ever would.
+
+**The arms were not observed alike.** `mem.observe(dev.screenshot())` sat outside
+the burst loop, so the Monkey's screen was sampled 6 times per run while
+Gremlin's is sampled after every action — 30 times. Even a Monkey exploring
+perfectly would be undercounted five to one.
+
+Neither shows up as a crash or a failing test. The run completes, the table
+prints, and the number is wrong in the flattering direction — which is the
+failure mode this ledger exists to catch.
+
+**Fixed 26 Aug 2026.** One action per invocation, seed advancing as
+`seed * 1000 + fired`, screenshot after every action.
+
+**The fix did not change the number, and the first report that it had was
+wrong.** An initial check appeared to show 1 screen → 3, which was recorded here
+and should not have been: that check passed a hand-written activity
+`com.gremlin.gremlin_bench.MainActivity` instead of the
+`com.gremlin.gremlin_bench/.MainActivity` form `_resolve_config` produces, so
+`am start` silently failed and the device stayed on the launcher. The Monkey ran
+against the launcher and the three "distinct screens" were launcher pages. The
+same lesson as the bug itself: a silent failure that returns a plausible number.
+
+Re-measured with the correct activity, twice, 30 actions: **1.0 screens, both
+seeds** — the same as before the fix. The Monkey does fire touches (19 of 30
+events at default percentages, verified with `monkey -v -v`); it stays on the
+first screen because random coordinates across 1080x1920 mostly land on empty
+space. That is a real property of the baseline and exactly what accessibility-tree
+grounding exists to fix, so the ~5x screens ratio stands.
+
+Both defects were nonetheless real and the fix stays: a seed that replays and an
+arm sampled five times less often would have corrupted the number on any app
+where the Monkey *can* make progress. G15 still applies — the fixture is too
+small for the ratio to mean much either way.
+
+---
+
+## G15 — The benchmark fixture saturates before the budget does
+
+**Severity:** high · **Status:** open · **Threatens:** M2, and the G4 ablation
+
+Both Gremlin arms finish with `coverage complete at step 15–16` out of a 30
+action budget, and both report `5.0 ± 0.0` distinct screens. That is the
+fixture's ceiling, not a measurement: every reachable control has been tapped
+with half the budget unspent, so the screens column cannot distinguish a good
+policy from an adequate one. Two arms tying there says nothing about either.
+
+It also caps the ablation. G4 asks whether the vision model is load-bearing; on
+a five-screen app the answer for coverage is "neither arm can do better", and
+only the per-defect rate carries signal — `lib/main.dart:126` is found by the
+vision arm 2/3 and by coverage-only 0/5, which is the one real finding the run
+produced.
+
+The same ceiling blocks the training corpus described in the model plan: a
+five-screen app yields a few hundred decision points across every seed, where
+outcome-weighted fine-tuning needs thousands from apps where choosing wrong
+actually costs coverage.
+
+**Fix.** Benchmark against real open-source apps with deep navigation, not only
+the planted-defect fixture. `gremlin_bench` stays as the detection-rate fixture,
+where planted defects with known ground truth are exactly what is wanted; it
+cannot also serve as the coverage benchmark.
+
+---
+
+## G16 — Perceptual hashing under-counts screens on the web
+
+**Severity:** medium · **Status:** open · **Threatens:** M2 on web, the coverage metric
+
+`ScreenMemory` identifies a screen by the perceptual hash of its screenshot, at
+`phash_same_threshold = 6`. That threshold was chosen against phone screenshots,
+where moving between screens repaints most of the display. A web page is mostly
+white space with a small amount of text, so two genuinely different views differ
+in far fewer bits than two Android screens do, and collapse into one.
+
+Measured 26 Aug 2026 on the web fixture: a page with six distinct sections
+reported **2 distinct screens**.
+
+The behaviour is not broken — controls are keyed per screen, so merging two
+screens merely unions their control lists and the explorer still taps all of
+them. What is wrong is the *number*, which is the headline metric M2 is stated
+in. A web coverage figure cannot be quoted until this is fixed.
+
+**Fix.** Screen identity on the web should not come from pixels at all. The URL
+is the obvious component, and a hash of the visible control labels covers
+single-page apps that never change it. Both are already computed each step —
+`WebDriver.elements()` returns the labels and `foreground_package()` reads the
+URL — so this is a change to what `ScreenMemory.observe` is given, not new
+machinery. It touches the Android path too, which is why it is not being done
+in the same change as the platform itself.

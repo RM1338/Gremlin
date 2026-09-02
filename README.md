@@ -187,6 +187,29 @@ cd frontend && npm install && npm run build && cd ..
 .venv/bin/python -m gremlin.eval --actions 30 --monkey
 ```
 
+## Web apps
+
+No device, no emulator, no adb — just an address:
+
+```
+.venv/bin/python run.py --url http://localhost:5173
+.venv/bin/python run.py --url https://example.com --project ~/Projects/mysite
+```
+
+The same agent and the same oracle discipline. Playwright drives the page
+deterministically (it is a driver, not an agent — the exploration policy stays
+Gremlin's), and the oracle listens to the Chrome DevTools Protocol instead of
+`logcat`: uncaught exceptions, unhandled promise rejections, console errors,
+failed requests and 5xx responses. Source locations arrive as real URLs, so a
+report quotes the line that threw rather than a frame in generated code.
+
+It drives the Chrome already installed on the machine. `--project` is optional
+and only tells the reporter where the source lives.
+
+Not yet covered on web: Tier 2. A page is served rather than built, so the
+rebuild-and-replay gates have nothing to rebuild — `FIX_BACKEND=prompt` still
+writes a paste-ready fix.
+
 ## The console
 
 The console is a React app in `frontend/`. `python -m gremlin.dashboard` serves the built `frontend/dist/` if present, and falls back to a legacy one-file UI otherwise. It has a landing page, a demo sign-in (client-side session — swap in real auth for production), and the console pages (Overview / Live run / Trace / Bugs / Benchmark) with run-complete notifications. A **target picker** in the top bar lists auto-detected Flutter projects (full capability) and every app installed on the device (explore-only).
@@ -197,4 +220,4 @@ Automated exploration taps real controls. On a signed-in app with real data it c
 
 ## Scope
 
-Gremlin verifies the app does not *visibly fail*; it does not verify the app is *correct*. Semantic assertions about behaviour are out of scope. Single-platform (Android): iOS has no `adb` and no equivalently chatty log.
+Gremlin verifies the app does not *visibly fail*; it does not verify the app is *correct*. Semantic assertions about behaviour are out of scope. Android (Flutter, React Native) and the web; iOS has no `adb` and no equivalently chatty log.

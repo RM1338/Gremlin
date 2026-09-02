@@ -283,8 +283,126 @@ REACT_NATIVE = _ReactNative(
 # ---------------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------------
+# Web
+# ---------------------------------------------------------------------------
 
-PLATFORMS: tuple[Platform, ...] = (FLUTTER, REACT_NATIVE)
+# The browser is a better logcat, not a worse one. Where Flutter and React
+# Native have to be coaxed into printing their failures as text we then
+# string-match, Chrome reports them as *structured events* over the DevTools
+# Protocol: an uncaught exception, a rejected promise, a console error, a failed
+# request. `gremlin/web.py` renders each of those as one line so that everything
+# downstream of the oracle — classification, dedup by source location, the
+# reporter, the trace — works here without a single change.
+#
+# So these patterns match lines Gremlin itself formats, not lines a framework
+# happens to print. That is why they are anchored: the shape is ours.
+_WEB_SIGNALS = (
+    Signal(CRASH, "uncaught-exception", re.compile(r"^Uncaught ")),
+    Signal(CRASH, "unhandled-rejection", re.compile(r"^Unhandled promise rejection", re.I)),
+    # Chrome's own wording, for a page whose CSP blocked the init script above.
+    Signal(CRASH, "unhandled-rejection", re.compile(r"Uncaught \(in promise\)", re.I)),
+    # A 5xx means the server broke, which is as real a defect as a client crash.
+    # 4xx is deliberately absent: a 404 for a favicon is not a bug in the app.
+    Signal(CRASH, "server-error", re.compile(r"^HTTP 5\d\d ")),
+    # React's development warnings say the same things here as they do on RN,
+    # and they are defects for the same reason — a missing key silently corrupts
+    # list state on reorder. Matched before the console.error catch-all so they
+    # are reported as what they are.
+    Signal(LAYOUT, "react-warning", re.compile(r"Each child in a list should have a unique")),
+    Signal(LAYOUT, "react-warning", re.compile(r"(Cannot update a component|Invalid hook call)", re.I)),
+    Signal(LAYOUT, "react-warning", re.compile(r"Warning: .*validateDOMNesting", re.I)),
+    Signal(LAYOUT, "request-failed", re.compile(r"^Request failed: ")),
+    # Everything else the page logged at error level.
+    Signal(LAYOUT, "console-error", re.compile(r"^console\.error: ")),
+)
+
+# Sources arrive as URLs ("http://localhost:5173/src/App.jsx:42:9"), so the
+# path part is what matters; `_web_source` strips the origin. Bundled and
+# vendored output is skipped for the same reason it is on RN — a line number in
+# generated code points the reporter at nothing a developer can edit.
+_WEB_IGNORED_PATHS = re.compile(
+    r"(^|/)(node_modules|dist|build)/|\.(bundle|chunk|min)\.[jt]sx?$")
+
+
+def _is_web(project: Path) -> bool:
+    """A web app: a page to serve, and no native shell that would claim it first.
+
+    The `android/` exclusion is what keeps this from stealing React Native
+    projects, which also have a package.json full of React.
+    """
+    if (project / "android").is_dir():
+        return False
+    if (project / "index.html").exists():
+        return True
+    pkg = project / "package.json"
+    if not pkg.exists():
+        return False
+    try:
+        data = json.loads(pkg.read_text())
+    except (OSError, json.JSONDecodeError):
+        return False
+    deps = {**data.get("dependencies", {}), **data.get("devDependencies", {})}
+    return bool(deps.keys() & {
+        "react", "react-dom", "vue", "svelte", "next", "nuxt", "vite",
+        "@angular/core", "solid-js", "astro",
+    })
+
+
+def _web_name(project: Path) -> str | None:
+    try:
+        return json.loads((project / "package.json").read_text()).get("name")
+    except (OSError, json.JSONDecodeError):
+        return project.name or None
+
+
+def _web_build(project: Path) -> Path:
+    raise RuntimeError(
+        "a web app is served, not built into an installable artifact — "
+        "Tier 2's rebuild/replay gates do not apply to the web platform yet. "
+        "Run with FIX_BACKEND=prompt for a paste-ready fix instead."
+    )
+
+
+class _Web(Platform):
+    def normalize_source_path(self, raw: str) -> str:
+        """Strip the origin from a source URL, leaving a repo-relative path."""
+        path = re.sub(r"^\w+://[^/]+/", "", raw)      # scheme://host[:port]/
+        path = re.sub(r"^[^/]*:\d+/", "", path)        # a bare host:port/ too
+        return path.lstrip("/") or raw
+
+
+# Like the JS one, plus `.html`: a plain site puts its handlers in an inline
+# `<script>`, and the browser reports those at `page.html:LINE`. Pointing a
+# report there is correct — that is where the developer has to go.
+# `:` is in the character class so the whole URL matches, origin included —
+# otherwise the match starts mid-URL and "http://127.0.0.1:8765/index.html:33"
+# yields the path "8765/index.html", with the port welded to the front of the
+# filename. `_Web.normalize_source_path` then strips scheme, host and port.
+_WEB_LOCATION_RE = re.compile(
+    r"([\w./:-]+\.(?:tsx|ts|jsx|js|mjs|cjs|vue|svelte|html?)):(\d+)(?::(\d+))?")
+
+
+WEB = _Web(
+    name="web",
+    label="Web",
+    signals=_WEB_SIGNALS,
+    location_re=_WEB_LOCATION_RE,
+    source_globs=("src/**/{name}", "app/**/{name}", "{name}"),
+    fence="javascript",
+    detect=_is_web,
+    project_name=_web_name,
+    build=_web_build,
+    fix_guidance=(
+        "e.g. do not wrap the handler in try/catch to swallow the exception, "
+        "do not add a key={Math.random()} to silence a list warning, and do not "
+        "delete the failing request."
+    ),
+)
+
+
+# ---------------------------------------------------------------------------
+
+PLATFORMS: tuple[Platform, ...] = (FLUTTER, REACT_NATIVE, WEB)
 DEFAULT = FLUTTER
 
 
@@ -307,7 +425,7 @@ def by_name(name: str | None) -> Platform:
 
 def is_ignored_source(path: str) -> bool:
     """True for paths no report should point at (vendored or generated code)."""
-    return bool(_RN_IGNORED_PATHS.search(path))
+    return bool(_RN_IGNORED_PATHS.search(path) or _WEB_IGNORED_PATHS.search(path))
 
 
 # ---------------------------------------------------------------------------

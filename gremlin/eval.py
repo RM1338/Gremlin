@@ -110,10 +110,28 @@ def run_gremlin(cfg: Config, label: str = "gremlin", seed: int = 0) -> Result:
                   error=f"ended early at step {len(explorer.trace)}: {note}"[:200] if note else "")
 
 
-def run_monkey(cfg: Config, actions: int, burst: int = 5, throttle_ms: int = 400,
+def run_monkey(cfg: Config, actions: int, throttle_ms: int = 400,
                seed: int = 0) -> Result:
-    """Run the Android Monkey, sampling the screen between bursts to count
-    distinct screens the way we do for Gremlin. Bugs are read from the oracle."""
+    """Run the Android Monkey one action at a time, screenshotting after each.
+
+    Two things here were quietly rigging the comparison in Gremlin's favour, and
+    both are the kind of error that inflates a headline number rather than
+    breaking a test.
+
+    The Monkey was fired in bursts of five, and every burst passed the *same*
+    `-s seed`. `monkey -s` seeds the PRNG, so identical seed and identical event
+    count replay the identical events: six bursts of five meant the same five
+    taps performed six times. A Monkey that never gets past its first five
+    events cannot leave the first screen, which is exactly the 1.0 +/- 0.0
+    screens the 26 Aug run measured. The seed now advances with the action
+    count, so the walk continues instead of restarting.
+
+    And the screen was sampled once per burst while Gremlin samples once per
+    action — 6 observations against 30, so even a Monkey exploring perfectly
+    would be undercounted five to one. One action per invocation makes the two
+    arms observed the same way, which is the only way the screens column means
+    anything.
+    """
     t0 = time.time()
     dev = Device(cfg.serial)
     dev.prepare()
@@ -127,19 +145,18 @@ def run_monkey(cfg: Config, actions: int, burst: int = 5, throttle_ms: int = 400
     mem = ScreenMemory(cfg.phash_same_threshold)
     bug_keys: set[str] = set()
 
-    fired = 0
-    while fired < actions:
-        n = min(burst, actions - fired)
+    for fired in range(actions):
         # Stay inside the app package; category LAUNCHER keeps it launchable.
+        # The seed advances per action so each invocation continues the random
+        # walk rather than replaying the previous one.
         subprocess.run(
             dev._base() + [
                 "shell", "monkey", "-p", cfg.package,
-                "-s", str(seed), "--throttle", str(throttle_ms),
-                "--pct-syskeys", "0", "-v", str(n),
+                "-s", str(seed * 1000 + fired), "--throttle", str(throttle_ms),
+                "--pct-syskeys", "0", "-v", "1",
             ],
             capture_output=True,
         )
-        fired += n
         time.sleep(0.5)
         mem.observe(dev.screenshot())
         for sig in oracle.drain():

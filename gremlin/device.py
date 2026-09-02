@@ -20,6 +20,39 @@ _TEXT_SUBSTITUTIONS = {
 _TEXT_ESCAPE = set("()<>|;&*\\~\"'`$")
 
 
+def choose_serial(explicit: str | None = None) -> str | None:
+    """Which device to drive when nobody said, or None for "adb decides".
+
+    Returns the explicit choice untouched, and None when adb has exactly one
+    candidate and can pick for itself. The interesting case is several attached:
+    the sandbox is chosen, and only the sandbox, because it is disposable and a
+    phone is not. Guessing at the first serial adb happens to list would point a
+    tapping agent at real hardware someone is holding.
+
+    Raises when several are attached and none is the sandbox, because at that
+    point there is no safe answer and picking one would be worse than stopping.
+    """
+    if explicit:
+        return explicit
+    try:
+        out = subprocess.run(["adb", "devices"], capture_output=True,
+                             timeout=10).stdout.decode("utf-8", "replace")
+    except Exception:
+        return None
+    attached = [ln.split("\t")[0] for ln in out.splitlines()[1:]
+                if "\t" in ln and ln.split("\t")[1].strip() == "device"]
+    if len(attached) <= 1:
+        return None  # adb has no ambiguity to resolve
+    from .sandbox import SERIAL as SANDBOX_SERIAL
+    if SANDBOX_SERIAL in attached:
+        return SANDBOX_SERIAL
+    raise RuntimeError(
+        f"several devices are attached ({', '.join(attached)}) and none is the "
+        f"sandbox. Set GREMLIN_SERIAL, or pass --serial, to say which one you "
+        f"mean — this drives taps, so it will not choose for you."
+    )
+
+
 class Device:
     def __init__(self, serial: str | None = None) -> None:
         self.serial = serial
@@ -40,7 +73,36 @@ class Device:
             capture_output=True,
             timeout=timeout,
         )
+        self._check_ambiguous(out.stderr)
         return out.stdout.decode("utf-8", "replace")
+
+    @staticmethod
+    def _check_ambiguous(stderr: bytes) -> None:
+        """Turn adb's ambiguity into a sentence, at the one place all calls pass.
+
+        With two things attached — a phone and the sandbox, say — adb refuses
+        every command with "more than one device/emulator" on *stderr* and an
+        empty stdout. Callers then parse the empty string and fail somewhere far
+        away with something meaningless: `wm size` produced "not enough values to
+        unpack (expected 2, got 1)", which names neither adb nor the real
+        problem. Raising here means every adb-backed call reports the same
+        actionable message instead of failing in its own private way.
+        """
+        if b"more than one device" not in (stderr or b""):
+            return
+        try:
+            listing = subprocess.run(["adb", "devices"], capture_output=True,
+                                     timeout=10).stdout.decode("utf-8", "replace")
+            serials = [ln.split()[0] for ln in listing.splitlines()[1:]
+                       if ln.strip() and "\t" in ln]
+        except Exception:
+            serials = []
+        which = ", ".join(serials) if serials else "several"
+        raise RuntimeError(
+            f"more than one device is attached ({which}) and none was chosen. "
+            f"Pass --serial <serial>, or set GREMLIN_SERIAL. "
+            f"(Testing a web app? It needs no device at all: run.py --url <address>.)"
+        )
 
     def _raw(self, *args: str, timeout: float = 15.0) -> bytes:
         """Run `adb <args>` and return raw stdout bytes (for binary output)."""
@@ -49,6 +111,7 @@ class Device:
             capture_output=True,
             timeout=timeout,
         )
+        self._check_ambiguous(out.stderr)
         return out.stdout
 
     # ---- lifecycle -------------------------------------------------------
@@ -135,6 +198,14 @@ class Device:
         self._shell("input", "text", self._encode_text(text))
         time.sleep(0.4)
 
+    def clear_text(self, n: int = 80) -> None:
+        """Best-effort empty the focused text field before typing into it: move
+        the cursor to the end, then send n deletes. A field can arrive holding a
+        remembered value (last-used email, keyboard autofill), and `input text`
+        only appends — so without this a login field becomes "oldnew@…"."""
+        self._shell("input", "keyevent", "123", *(["67"] * n))  # MOVE_END, DEL*n
+        time.sleep(0.3)
+
     def back(self) -> None:
         self._shell("input", "keyevent", "KEYCODE_BACK")
         time.sleep(0.6)
@@ -149,6 +220,19 @@ class Device:
             y1, y2 = y2, y1
         self._shell("input", "swipe", str(cx), str(y1), str(cx), str(y2), "300")
         time.sleep(0.6)
+
+    # ---- perception ------------------------------------------------------
+
+    def elements(self):
+        """The controls on the current screen, from the accessibility tree.
+
+        Lives here so the explorer can ask whatever driver it holds for its own
+        elements — adb reads uiautomator, the browser reads the DOM — instead of
+        calling an Android-only helper directly. Imported lazily because
+        grounding imports this module.
+        """
+        from .grounding import dump_elements
+        return dump_elements(self)
 
     # ---- helpers ---------------------------------------------------------
 

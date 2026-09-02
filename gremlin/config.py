@@ -39,6 +39,21 @@ ACTIVITY = ""
 # source root of whatever project is currently selected.
 SCRIBE_ROOT = Path(os.environ.get("GREMLIN_APP_ROOT", PROJECTS_ROOT))
 
+# Fields the explorer will fill on a sign-in / sign-up wall, in fill order.
+# Each name is matched as a lower-case substring against a field's on-screen
+# label/hint; set the value with GREMLIN_LOGIN_<NAME> in .env, e.g.
+#   GREMLIN_LOGIN_EMAIL=gremlin@example.com
+#   GREMLIN_LOGIN_OTP=000000
+_LOGIN_FIELDS = ("email", "phone", "username", "name", "password", "otp", "code")
+
+
+def _login_from_env() -> dict:
+    return {
+        name: os.environ[f"GREMLIN_LOGIN_{name.upper()}"]
+        for name in _LOGIN_FIELDS
+        if os.environ.get(f"GREMLIN_LOGIN_{name.upper()}")
+    }
+
 
 @dataclass
 class Config:
@@ -57,7 +72,12 @@ class Config:
     # untapped control (docs/KNOWN_ISSUES.md, G4). Comparing the two is what
     # establishes whether the model is load-bearing at all — until that number
     # exists, every claim about the model's contribution is unmeasured.
-    policy: str = "vision"
+    #
+    # Read from the environment for the same reason `serial` is: the console
+    # writes GREMLIN_POLICY into .env, and a hardcoded default meant that
+    # setting survived only until the next restart — after which the console
+    # showed one policy and runs used another.
+    policy: str = os.environ.get("GREMLIN_POLICY") or "vision"
 
     # adb device serial; None means "the only connected device". An emulator
     # looks like "emulator-5554" and a sandbox container like "localhost:5555";
@@ -71,7 +91,7 @@ class Config:
     # Exploration budget (upper bound). Coverage-driven exploration usually stops
     # earlier, when every reachable control has been tapped; this is the cap so a
     # large or cyclic app can't run forever.
-    max_steps: int = 80
+    max_steps: int = int(os.environ.get("GREMLIN_MAX_STEPS") or 80)
 
     # Downscale screenshots to this width before sending to the vision model,
     # to keep inference cheap (proposal, risk: inference cost).
@@ -83,6 +103,11 @@ class Config:
 
     # Output location for this run's artifacts (screenshots, reports, trace).
     run_dir: Path = field(default_factory=lambda: Path("runs/latest"))
+
+    # Credentials for a login/registration wall. Empty = none configured, and
+    # the explorer just taps the fields (which only focuses them) and loops.
+    # See _login_from_env / .env.example.
+    login: dict = field(default_factory=_login_from_env)
 
     def ensure_dirs(self) -> None:
         """Make this run's directory, and empty it of the LAST run's artifacts.

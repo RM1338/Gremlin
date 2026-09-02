@@ -72,9 +72,9 @@ def _downscale_data_url(path: Path, width: int) -> str:
 
 
 def generate(prompt: str, image_path: Path | None = None, vision_width: int = 540,
-             timeout: float = 60.0, max_retries: int = 4) -> str:
+             timeout: float = 60.0, max_retries: int = 4, api_key: str | None = None) -> str:
     """One Groq turn. Returns the model's text. Retries transient 429s."""
-    key = os.environ.get("GROQ_API_KEY")
+    key = api_key or os.environ.get("GROQ_API_KEY")
     if not key:
         raise GroqError(
             "GROQ_API_KEY is not set. Get a free key at "

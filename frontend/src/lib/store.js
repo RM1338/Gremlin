@@ -38,6 +38,19 @@ let state = {
   // "W/H" of the device this run was recorded on. A 16:9 container and a 19.5:9
   // handset are different shapes, and a bezel built for one crops the other.
   screenAspect: "",
+  // "web" frames the run as a browser window instead of a handset; targetUrl is
+  // what its address bar shows.
+  platform: "",
+  targetUrl: "",
+  // What the user is testing. This is the first choice on the console, because
+  // it decides everything after it: a mobile run needs a device and an
+  // installed app, a web run needs neither and takes an address instead.
+  // Remembered across reloads — nobody wants to re-pick this every visit.
+  mode: (() => {
+    try { return localStorage.getItem("gremlin-mode") === "web" ? "web" : "mobile"; }
+    catch { return "mobile"; }
+  })(),
+  webUrl: "",         // what the user has typed into the web target box
   merging: null,      // bug number whose verified fix is being merged
   merged: {},         // {bugNumber: {merged, into, repo}} for fixes taken this session
   // What the run is doing before it has a frame to show. A cold Gradle build
@@ -114,6 +127,8 @@ export async function loadState() {
       fixBackend: d.fix_backend || state.fixBackend,
       runId: d.run_id || state.runId,
       screenAspect: d.screen_aspect || state.screenAspect,
+      platform: d.platform || state.platform,
+      targetUrl: d.target_url || state.targetUrl,
       // A fix survives a page reload; the server knows, this tab may not.
       fixingBug: d.fixing ? (state.fixingBug ?? 0) : null,
     });
@@ -258,6 +273,41 @@ export async function stopEmulator() {
   await loadTargets();
 }
 
+export function setMode(mode) {
+  if (state.running) return;
+  try { localStorage.setItem("gremlin-mode", mode); } catch {}
+  set({ mode });
+}
+
+export function setWebUrl(webUrl) { set({ webUrl }); }
+
+export async function startWebRun(url) {
+  // A web run shares everything downstream with a device run — the same socket,
+  // the same frames, the same trace — so this differs from startRun only in
+  // what it names as the target.
+  if (state.running) return;
+  const trimmed = (url || state.webUrl || "").trim();
+  if (!trimmed) throw new Error("Enter the address of the web app to test.");
+  set({ running: true, done: false, stopping: false, summary: null, status: "",
+        platform: "web", targetUrl: trimmed,
+        live: { steps: [], bugs: [], current: null, screenCount: 0 } });
+  try {
+    const r = await fetch("/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: trimmed }),
+    });
+    if (!r.ok) {
+      const d = await r.json().catch(() => ({}));
+      set({ running: false });
+      throw new Error(d.error || `Could not start the run (HTTP ${r.status}).`);
+    }
+  } catch (e) {
+    set({ running: false });
+    throw e;
+  }
+}
+
 export async function startRun(target) {
   if (state.running) return;
   if (state.fixingBug !== null) throw new Error("A Tier-2 fix is using the device. Wait for it to finish.");
@@ -266,7 +316,15 @@ export async function startRun(target) {
   if ("Notification" in window && Notification.permission === "default") {
     try { await Notification.requestPermission(); } catch {}
   }
-  set({ running: true, done: false, stopping: false, summary: null, status: "", selected: t || state.selected, live: { steps: [], bugs: [], current: null, screenCount: 0 } });
+  // Clear the *previous* run's platform and address as well as its frames. A
+  // mobile run started after a web one kept `platform: "web"` until the next
+  // /api/state landed, and for those seconds the console drew a browser window
+  // with a phone screenshot inside it and the old site still in the URL bar.
+  set({ running: true, done: false, stopping: false, summary: null, status: "",
+        selected: t || state.selected,
+        platform: (t || state.selected)?.platform || "",
+        targetUrl: "",
+        live: { steps: [], bugs: [], current: null, screenCount: 0 } });
   try {
     const r = await fetch("/start", {
       method: "POST",

@@ -77,14 +77,14 @@ def _parse_429(body: str) -> tuple[bool, float | None]:
 
 
 def generate(prompt: str, image_path: Path | None = None, vision_width: int = 540,
-             timeout: float = 60.0, max_retries: int = 4) -> str:
+             timeout: float = 60.0, max_retries: int = 4, api_key: str | None = None) -> str:
     """One Gemini turn. Returns the model's text.
 
     Retries transient per-minute 429s (respecting the server's retry delay) so a
     brief rate-limit doesn't kill a run. A per-*day* quota exhaustion is raised
     immediately as GeminiQuotaError — retrying can't fix it before midnight PT.
     """
-    key = os.environ.get("GEMINI_API_KEY")
+    key = api_key or os.environ.get("GEMINI_API_KEY")
     if not key:
         raise GeminiError(
             "GEMINI_API_KEY is not set. Get a free key at "

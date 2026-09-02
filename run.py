@@ -13,6 +13,14 @@ installs the app into it, and drives it exactly as it would a physical device:
     python run.py --sandbox             # sandbox even with a phone attached
     python run.py --keep-sandbox        # leave it up; the next run adopts it
 
+Or a web app, which needs no device at all — just a URL and a browser:
+
+    python run.py --url http://localhost:5173
+    python run.py --url https://example.com --project ~/Projects/mysite
+
+`--project` there is optional and only tells the reporter where the source lives,
+so a bug can quote the line that threw.
+
 Or an emulator, if you would rather have one:
 
     python run.py --avds                # list the AVDs on this machine
@@ -167,6 +175,9 @@ def main() -> None:
                     help="who picks the next action: 'vision' (the model, default) or "
                          "'coverage' (no model at all — the G4 ablation arm)")
     ap.add_argument("--serial", default=None, help="adb device serial")
+    ap.add_argument("--url", default=None,
+                    help="explore a web app at this address (no device needed); "
+                         "--project may accompany it to locate the source")
     ap.add_argument("--project", default=None, help="path to an app project to test")
     ap.add_argument("--package", default=None, help="test an installed package directly (device-only)")
     ap.add_argument("--activity", default=None, help="launcher activity for --package")
@@ -209,6 +220,22 @@ def main() -> None:
         print(f"App projects under {args.projects_root}:")
         for t in targets:
             print(f"  {t.name:20} {t.toolkit.label:14} {t.package:28} {t.source_root}")
+        return
+
+    if args.url:
+        # The web platform owns its own driver and needs no device, so every
+        # branch below — serial, sandbox, emulator, installing an apk — is not
+        # merely skipped but inapplicable. Returning early says that plainly.
+        from gremlin import web
+        cfg = web.config_for(args.url)
+        if args.project:
+            cfg.scribe_root = Path(args.project).expanduser()
+        if args.steps is not None:
+            cfg.max_steps = args.steps
+        if args.policy is not None:
+            cfg.policy = args.policy
+        print(f"target: {args.url}  [{cfg.package}]  Web")
+        _run(cfg)
         return
 
     cfg = _resolve_config(args)

@@ -280,6 +280,13 @@ def ensure_installed(cfg, on_status=None) -> None:
     from . import platforms
 
     say = on_status or (lambda _m: None)
+    # A web target has no package to install and no device to install it on.
+    # Its `package` is an origin, so without this the sandbox tried to build
+    # and install a *website* and failed with "debtcalculatorpro.com is not
+    # installed in the sandbox". Guarded here rather than at one call site so
+    # every caller is covered.
+    if getattr(cfg, "platform", "") == "web":
+        return
     if cfg.package in Device(cfg.serial).list_third_party_packages():
         return
     root = Path(cfg.scribe_root)

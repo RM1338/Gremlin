@@ -14,11 +14,20 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from gremlin.config import Config
-from gremlin.device import Device
+from gremlin.device import Device, choose_serial
 from gremlin.grounding import dump_elements
 
 cfg = Config()
 cfg.ensure_dirs()
+
+# With a phone and the sandbox both attached, adb refuses to choose and every
+# call below fails. `choose_serial` picks the sandbox and never a phone.
+try:
+    cfg.serial = choose_serial(cfg.serial)
+except RuntimeError as e:
+    sys.exit(str(e))
+if cfg.serial:
+    print(f"several devices attached; driving {cfg.serial}")
 
 dev = Device(cfg.serial)
 print("preparing device (wake + stay-on)...")

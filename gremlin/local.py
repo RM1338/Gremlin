@@ -42,16 +42,17 @@ class LocalError(RuntimeError):
 def _is_reasoning_model(name: str) -> bool:
     """Whether this model thinks before answering, and so needs that suppressed.
 
-    Matching the family name alone is too blunt here. Qwen3-VL ships as both an
-    Instruct and a Thinking variant: the Instruct one answers directly, so
-    sending it a thinking-suppression flag is at best redundant and at worst a
-    400 from a server that does not accept the field.
+    Qwen3-VL ships as both an Instruct and a Thinking variant, so the family
+    name alone does not settle it — but only the Instruct one says so in its
+    name. Ollama's `qwen3-vl:4b` is unlabelled and *does* think, and an earlier
+    version of this treated every `-vl` tag as non-thinking, which returned an
+    empty string from every call. Assume thinking unless the name rules it out;
+    the flag is harmless on a model that does not think.
     """
     n = name.lower()
     if "thinking" in n:
         return True
-    # A vision-language Instruct checkpoint — answers directly.
-    if "-vl" in n or "vl:" in n or "vl-" in n:
+    if "instruct" in n:
         return False
     return any(tag in n for tag in ("qwen3", "gpt-oss", "deepseek-r1"))
 
@@ -84,7 +85,7 @@ def generate(prompt: str, image_path: Path | None = None, vision_width: int = 54
         "temperature": 0.4,
         # Headroom for a reasoning preamble, not for the answer itself — the
         # decision we want back is a two-line JSON object.
-        "max_tokens": 2048,
+        "max_tokens": int(os.environ.get("LOCAL_MAX_TOKENS", "2048")),
     }
     # Same trap as the Groq backend: a thinking model left to think will spend
     # the entire budget deliberating over which button to tap and return no
@@ -98,7 +99,13 @@ def generate(prompt: str, image_path: Path | None = None, vision_width: int = 54
     else:
         suppress_thinking = suppress in ("1", "true", "yes")
     if suppress_thinking:
+        # Two spellings because the servers disagree: vLLM reads the chat
+        # template kwarg, Ollama reads a top-level `think`. Each ignores the
+        # other's field, so sending both costs nothing — but neither is a
+        # guarantee. Ollama's qwen3-vl:4b honours neither and thinks anyway,
+        # which is what `_no_answer` below exists to report.
         payload["chat_template_kwargs"] = {"enable_thinking": False}
+        payload["think"] = False
     body = json.dumps(payload).encode()
 
     headers = {"Content-Type": "application/json"}
@@ -135,6 +142,22 @@ def generate(prompt: str, image_path: Path | None = None, vision_width: int = 54
             ) from e
 
     try:
-        return data["choices"][0]["message"]["content"].strip()
+        choice = data["choices"][0]
+        text = choice["message"]["content"].strip()
     except (KeyError, IndexError) as e:
         raise LocalError(f"local model returned no usable text: {json.dumps(data)[:300]}") from e
+
+    # A thinking model that will not stop thinking spends the whole budget on
+    # its preamble and returns an empty string — every step, silently, for a
+    # whole run. Observed with Ollama's qwen3-vl:4b, which honours neither
+    # suppression flag. Say what happened and what to do, because "unparseable
+    # reply: ''" thirty times over says neither.
+    if not text and choice.get("finish_reason") == "length":
+        raise LocalError(
+            f"{MODEL} used its entire {payload['max_tokens']}-token budget "
+            f"without answering — it is a thinking model and this server is "
+            f"ignoring the suppression flag. Use a non-thinking vision model "
+            f"(e.g. qwen2.5vl:3b), or raise LOCAL_MAX_TOKENS if you want to "
+            f"pay for the deliberation."
+        )
+    return text

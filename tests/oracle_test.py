@@ -12,7 +12,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from gremlin.config import Config
-from gremlin.device import Device
+from gremlin.device import Device, choose_serial
 from gremlin.oracle import Oracle
 from gremlin import platforms
 
@@ -93,6 +93,13 @@ if "--offline" in sys.argv:
 
 print("\n=== (2) live logcat while tapping the app ===")
 cfg = Config()
+# A phone and the sandbox can both be attached; pick the disposable one and
+# never guess at hardware (see gremlin.device.choose_serial).
+try:
+    cfg.serial = choose_serial(cfg.serial)
+except RuntimeError as e:
+    sys.exit(str(e))
+
 dev = Device(cfg.serial)
 dev.prepare()
 dev.relaunch(cfg.package, cfg.activity)

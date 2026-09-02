@@ -20,10 +20,11 @@ from typing import Callable
 
 _STUCK_HINT_AT = 2   # warn the model in the prompt after N steps without a new screen
 _DONE_AFTER = 6      # stop once this many steps pass with nothing left to tap anywhere
+_SCROLL_TRIES = 3    # consecutive fruitless scrolls before a screen is called done
 
 from .config import Config
 from .device import Device
-from .grounding import dump_elements, Element
+from .grounding import Element
 from .models import Action, Bug
 from .oracle import Oracle
 from .policy import decide, decide_coverage_only
@@ -38,8 +39,18 @@ EventSink = Callable[[str, dict], None]
 class Explorer:
     def __init__(self, cfg: Config, on_event: EventSink | None = None) -> None:
         self.cfg = cfg
-        self.dev = Device(cfg.serial)
-        self.oracle = Oracle(self.dev, package=cfg.package, platform=cfg.platform)
+        # Which driver, and which source of truth about failure. These two go
+        # together — a browser page is driven and confesses over the DevTools
+        # protocol, a device is driven and confesses to logcat — so they are
+        # chosen once, here, and every other line of this class is unchanged
+        # between them.
+        if cfg.platform == "web":
+            from .web import WebDriver, WebOracle
+            self.dev = WebDriver(cfg)
+            self.oracle = WebOracle(self.dev, platform=cfg.platform)
+        else:
+            self.dev = Device(cfg.serial)
+            self.oracle = Oracle(self.dev, package=cfg.package, platform=cfg.platform)
         self.memory = ScreenMemory(cfg.phash_same_threshold)
         self.trace: list[Action] = []
         self.bugs: dict[str, Bug] = {}  # dedup_key -> Bug
@@ -55,7 +66,23 @@ class Explorer:
         self._seen_elems: dict[int, set] = {}   # screen_id -> all discovered keys
         self._no_frontier_streak = 0            # steps with nothing left to tap
         self._typed: set[int] = set()           # screens where we've typed once
-        self._scrolled: set[int] = set()        # screens we've scrolled for coverage
+        # A sign-in / sign-up wall: coverage taps each field (which only focuses
+        # it) and never types, so the run loops here until the step budget. When
+        # cfg.login is set, `_advance_login` fills one credential field per step
+        # (re-grounded each time — the keyboard reflows the screen) and taps
+        # submit once every field is in.
+        self._login_filled: dict[int, set] = {}  # screen_id -> credential names filled
+        self._login_submitted: set[int] = set()  # screens whose form we've submitted
+        self._signup_navs = 0                     # times we've followed a sign-up link
+        self._mailbox = None       # set in run() when GREMLIN_LOGIN_EMAIL=auto
+        self._fresh_signup = False # inbox is new -> register before trying to sign in
+        # Scrolls spent on a screen without finding anything new. One scroll per
+        # screen was enough for a phone app, where a screen is a screenful; it
+        # is badly wrong for a long web page, which is one "screen" that has to
+        # be walked down several viewports before its controls have been seen.
+        # The budget resets whenever a scroll actually reveals a control, so a
+        # long page keeps going and a static one stops after _SCROLL_TRIES.
+        self._scrolls: dict[int, int] = {}
         self._done = False                      # stop the run loop early
         self._complete = False                  # stopped because coverage is done
 
@@ -78,8 +105,44 @@ class Explorer:
             except Exception:
                 pass  # a broken dashboard must never break a run
 
+    def _provision_inbox(self) -> None:
+        """GREMLIN_LOGIN_EMAIL=auto: get a real disposable inbox and let the
+        OTP/verification fields be filled from the code it receives.
+
+        On failure the run still proceeds — the email credential is dropped so
+        no login is attempted, rather than typing the literal string "auto"."""
+        if self.cfg.login.get("email") != "auto":
+            return
+        import secrets
+        from .mailbox import Mailbox
+        last = None
+        for attempt in range(3):
+            try:
+                self._mailbox = Mailbox()
+                break
+            except Exception as e:
+                last = e
+                time.sleep(2)
+        if self._mailbox is None:
+            print(f"  !! GREMLIN_LOGIN_EMAIL=auto but no disposable inbox could be "
+                  f"created after 3 tries ({last}). The login wall will NOT be "
+                  f"cleared — set a literal GREMLIN_LOGIN_EMAIL or check outbound "
+                  f"HTTPS to api.mail.tm.")
+            self.cfg.login.clear()
+            return
+        self.cfg.login["email"] = self._mailbox.address
+        self.cfg.login.setdefault("otp", "auto")
+        self.cfg.login.setdefault("code", "auto")
+        # A brand-new inbox has no account yet: give the sign-up form a name and
+        # a complexity-safe password, and prefer the register path over sign-in.
+        self.cfg.login.setdefault("name", "Gremlin QA")
+        self.cfg.login.setdefault("password", "Gr3mlin-" + secrets.token_hex(4))
+        self._fresh_signup = True
+        print(f"  .. disposable inbox: {self._mailbox.address}")
+
     def run(self) -> list[Bug]:
         self.cfg.ensure_dirs()
+        self._provision_inbox()
         self._t0 = time.time()
         self.dev.prepare()
         self.dev.relaunch(self.cfg.package, self.cfg.activity)
@@ -109,6 +172,11 @@ class Explorer:
                     break
         finally:
             self.oracle.stop()
+            # The browser is a process we started; leaving it running would leak
+            # one per run. Android's driver owns nothing to release.
+            close = getattr(self.dev, "close", None)
+            if close:
+                close()
 
         self._write_trace()
         self._emit("done", self._summary())
@@ -157,10 +225,9 @@ class Explorer:
         shot_path = self.cfg.run_dir / "screens" / f"step_{step:03d}.png"
         shot_path.write_bytes(shot)
         h = self.memory.phash(shot)
-        is_new = self.memory.seen_index(h) is None  # read-only check before we record
 
         # ---- Decide ----
-        elements = dump_elements(self.dev)
+        elements = self.dev.elements()
         stuck_hint = ""
         if self._steps_since_new >= _STUCK_HINT_AT:
             stuck_hint = (
@@ -179,15 +246,29 @@ class Explorer:
             )
         # The coverage arm names no screens; fall back to ScreenMemory's own
         # positional naming rather than labelling every screen with one string.
-        screen_id, _ = self.memory.observe(shot, decision.screen_name or None)
+        # A driver that can name its own screens does; one that cannot passes
+        # None and the perceptual hash decides, exactly as before.
+        screen_key = getattr(self.dev, "screen_key", None)
+        # `is_new` comes from the same identity that assigns the screen id. It
+        # used to be a separate perceptual-hash check made before recording,
+        # which disagreed with a driver-supplied key and reported every scroll
+        # of one web page as a screen never seen before.
+        screen_id, is_new = self.memory.observe(
+            shot, decision.screen_name or None,
+            key=screen_key() if screen_key else None)
 
         # Register this screen's clickable controls and find the untapped ones.
         seen = self._seen_elems.setdefault(screen_id, set())
         tapped = self._tapped.setdefault(screen_id, set())
         clickable = [e for e in elements if e.clickable]
+        known = len(seen)
         for e in clickable:
             seen.add(self._elem_key(e))
         untapped = [e for e in clickable if self._elem_key(e) not in tapped]
+        # Scrolling earned its keep: give this screen its scroll budget back, so
+        # a page that keeps revealing controls keeps being walked down.
+        if len(seen) > known:
+            self._scrolls[screen_id] = 0
 
         self._steps_since_new = 0 if is_new else self._steps_since_new + 1
 
@@ -313,6 +394,26 @@ class Explorer:
         controls and fills text fields; it can never keep us looping."""
         tapped = self._tapped.setdefault(screen_id, set())
 
+        # Auth wall first: fill and submit a login/registration screen once, so
+        # coverage doesn't loop forever tapping fields it never types into.
+        act = self._advance_login(elements, screen_id)
+        if act is not None:
+            return act
+
+        # Guardrail: on an auth screen the deterministic filler is the ONLY thing
+        # allowed to act. Everything else here is a field (tapping just focuses
+        # it) or a link that leaves the flow — letting the model pick, or
+        # coverage tap "Sign in" / "Forgot password", is exactly how a run
+        # wanders off a half-filled sign-up form. Scroll to look for fields still
+        # below the fold, then give up on this screen.
+        if self.cfg.login and self._in_login_flow(elements, screen_id):
+            if self._scrolls.get(screen_id, 0) < _SCROLL_TRIES:
+                self._scrolls[screen_id] = self._scrolls.get(screen_id, 0) + 1
+                self.dev.scroll("down")
+                return Action("scroll", direction="down", reason="login: reveal more fields")
+            self.dev.back()
+            return Action("back", reason="login: nothing left to try on this screen")
+
         if untapped:
             # Honour the model's pick if it targets an untapped control (good
             # ordering); otherwise just take the next untapped one ourselves.
@@ -325,17 +426,157 @@ class Explorer:
                                 "coverage: tapping an unvisited control")
 
         # Nothing left to tap on this screen. Let the model type into a field if
-        # it wants (search boxes, logins), then scroll to reveal more, then leave.
-        if decision.verb == "type" and decision.text and screen_id not in self._typed:
+        # it wants (search boxes), then scroll to reveal more, then leave.
+        if (decision.verb == "type" and decision.text
+                and screen_id not in self._typed):
             self._typed.add(screen_id)
             self.dev.type_text(decision.text)
             return Action("type", text=decision.text, reason=decision.reason)
-        if screen_id not in self._scrolled:
-            self._scrolled.add(screen_id)
+        if self._scrolls.get(screen_id, 0) < _SCROLL_TRIES:
+            self._scrolls[screen_id] = self._scrolls.get(screen_id, 0) + 1
             self.dev.scroll("down")
             return Action("scroll", direction="down", reason="coverage: reveal more controls")
         self.dev.back()
         return Action("back", reason="coverage: screen fully covered, backing out")
+
+    # Button labels that submit a login/registration form.
+    _SUBMIT_WORDS = (
+        "sign in", "signin", "log in", "login", "sign up", "signup", "register",
+        "create", "continue", "next", "verify", "submit", "get started", "done",
+        "confirm",
+    )
+    _SIGNUP_WORDS = ("sign up", "signup", "create account", "create an account",
+                     "register", "get started", "new account")
+    _SIGNIN_WORDS = ("sign in", "signin", "log in", "login")
+    # A link that goes the *wrong* way — "Already have an account? Sign in" on a
+    # sign-up screen, and its mirror. Never follow these while navigating.
+    _DECOY_WORDS = ("already have", "have an account", "already registered",
+                    "don't have an account", "dont have an account")
+
+    # Order to test credential names against a field label — longer/more specific
+    # first, so "username" wins a "Username" field before "name" can claim it.
+    _MATCH_ORDER = ("email", "phone", "username", "name", "password", "otp", "code")
+    # Priority for handing a leftover (unlabelled) field a credential on a
+    # multi-field form. OTP/code are never placed this way.
+    _SPARE_ORDER = ("email", "password", "name", "phone", "username")
+    _CONFIRM_WORDS = ("confirm", "repeat", "re-enter", "re-type", "verify password",
+                      "password again")
+
+    @staticmethod
+    def _hit(label: str, words) -> bool:
+        low = label.lower()
+        return any(w in low for w in words)
+
+    def _assign_fields(self, fields_els: list[Element]) -> list:
+        """(element, credential-name, value) for each fillable field. Match by
+        label first; then, on a multi-field form, hand any leftover field the
+        next unused credential top-to-bottom so a form never submits half-empty.
+
+        The credential NAME is carried so the caller can track "email is filled"
+        across a screen reflow, when the field's label has become the value."""
+        login = self.cfg.login
+        used: set[str] = set()
+        placed: dict[int, tuple] = {}
+        for e in fields_els:
+            label = e.label.lower()
+            for name in self._MATCH_ORDER:
+                if name in used or name not in login:
+                    continue
+                if name in label or (name == "email" and "@" in label):
+                    placed[id(e)] = (e, name, login[name]); used.add(name); break
+            else:
+                if "password" in login and self._hit(label, self._CONFIRM_WORDS):
+                    placed[id(e)] = (e, "confirm", login["password"])
+        if len(fields_els) >= 2:
+            spare = [n for n in self._SPARE_ORDER if n in login and n not in used]
+            for e in fields_els:
+                if id(e) in placed or not spare:
+                    continue
+                n = spare.pop(0)
+                placed[id(e)] = (e, n, login[n]); used.add(n)
+        return [placed[id(e)] for e in fields_els if id(e) in placed]
+
+    def _advance_login(self, elements: list[Element], screen_id: int) -> "Action | None":
+        """One deterministic step toward clearing a sign-in / sign-up screen, or
+        None when there is nothing (more) to do here.
+
+        Re-grounded on every call, deliberately: filling a field pops the
+        keyboard and reflows the screen, so a plan captured up front taps stale
+        coordinates — which is how a queued "fill email" lands on the "Sign in"
+        link. Each call we look at the CURRENT elements, fill the next unfilled
+        credential field, and tap submit only once every field is in.
+        """
+        if not self.cfg.login:
+            return None
+        editable = [e for e in elements if getattr(e, "editable", False)]
+        buttons = [e for e in elements if e.clickable and not getattr(e, "editable", False)]
+        real = [b for b in buttons if not self._hit(b.label, self._DECOY_WORDS)]
+        primary = max(real, key=lambda e: e.bounds[2] - e.bounds[0], default=None)
+
+        # A fresh inbox has no account: from a sign-IN screen, follow the
+        # sign-UP link first. Capped, so a misread link can't burn the budget.
+        if self._fresh_signup and primary is not None and self._hit(primary.label, self._SIGNIN_WORDS):
+            link = next((b for b in real if self._hit(b.label, self._SIGNUP_WORDS)), None)
+            if link is not None and self._signup_navs < 3:
+                self._signup_navs += 1
+                self._tapped.setdefault(screen_id, set()).add(self._elem_key(link))
+                self.dev.tap(link.cx, link.cy)
+                return Action("tap", x=link.cx, y=link.cy, target_label=link.label,
+                              reason="login: go to sign-up")
+            self._fresh_signup = False  # no link, or out of tries — just fill this screen
+
+        assigned = self._assign_fields(editable)
+        if not assigned:
+            return None
+        filled = self._login_filled.setdefault(screen_id, set())
+
+        for el, name, value in assigned:
+            if name in filled:
+                continue
+            filled.add(name)
+            if value == "auto":  # OTP field, GREMLIN_LOGIN_EMAIL=auto
+                value = self._mailbox.wait_for_code() if self._mailbox else None
+                if not value:
+                    print("  !! no verification code arrived; leaving the OTP field blank")
+                    continue
+            self._tapped.setdefault(screen_id, set()).add(self._elem_key(el))
+            self.dev.tap(el.cx, el.cy)
+            clear = getattr(self.dev, "clear_text", None)
+            if clear:  # Android only; a browser field is set fresh anyway
+                clear()
+            self.dev.type_text(value)
+            return Action("type", x=el.cx, y=el.cy, target_label=el.label,
+                          text=value, reason=f"login: fill {el.label!r}")
+
+        # Every credential field is in — submit once.
+        if screen_id in self._login_submitted:
+            return None
+        submit = primary if (primary is not None and self._hit(primary.label, self._SUBMIT_WORDS)) \
+            else next((b for b in real if self._hit(b.label, self._SUBMIT_WORDS)), None)
+        if submit is None:
+            return None  # button may be below the fold; the guardrail scrolls
+        self._login_submitted.add(screen_id)
+        self._fresh_signup = False
+        self._tapped.setdefault(screen_id, set()).add(self._elem_key(submit))
+        self.dev.tap(submit.cx, submit.cy)
+        return Action("tap", x=submit.cx, y=submit.cy, target_label=submit.label,
+                      reason="login: submit credentials")
+
+    def _in_login_flow(self, elements: list[Element], screen_id: int) -> bool:
+        """Is this an auth screen we should keep the model and coverage off?
+        Scoped so an ordinary content screen that happens to have a search box
+        is still explored normally."""
+        if not any(getattr(e, "editable", False) for e in elements):
+            return False
+        if screen_id in self._login_filled or screen_id in self._login_submitted:
+            return True
+        if self._fresh_signup:
+            return True
+        if any("password" in e.label.lower()
+               for e in elements if getattr(e, "editable", False)):
+            return True
+        return any(self._hit(b.label, self._SIGNIN_WORDS + self._SIGNUP_WORDS)
+                   for b in elements if b.clickable)
 
     def _record_bug(self, sig, step: int) -> None:
         key = sig.key()

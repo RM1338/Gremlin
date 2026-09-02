@@ -85,6 +85,53 @@ def stable_key(kind: str, log_line: str) -> str:
     return f"{kind}|{re.sub(r'\d+', 'N', log_line)[:80]}"
 
 
+def extract_location(lines: list[str],
+                     platform: "platforms.Platform") -> tuple[str | None, int | None]:
+    """First source location in these lines that points at real app code.
+
+    React Native stacks are full of frames inside `node_modules` and inside the
+    generated Metro bundle, and a web stack is full of bundled and minified
+    output; pointing a report at those would be worse than pointing it nowhere,
+    so they are skipped rather than accepted as a first match.
+    """
+    for ln in lines:
+        for m in platform.location_re.finditer(ln):
+            raw = m.group(1)
+            if platforms.is_ignored_source(raw):
+                continue
+            return platform.normalize_source_path(raw), int(m.group(2))
+    return None, None
+
+
+def classify_lines(lines: list[str],
+                   platform: "platforms.Platform") -> list[Signal]:
+    """Turn a batch of log lines into the signals they contain.
+
+    Shared by the adb oracle and the browser one. The two differ only in where
+    the lines come from — logcat for a device, formatted DevTools events for a
+    page — so everything from classification onwards is written once.
+    """
+    signals: list[Signal] = []
+    for i, line in enumerate(lines):
+        match = platform.classify(line)  # first match wins, one per line
+        if match is None:
+            continue
+        ahead = lines[i : i + _CONTEXT_AHEAD]
+        behind = lines[max(0, i - _CONTEXT_BEHIND) : i]
+        source_file, source_line = extract_location(ahead, platform)
+        signals.append(
+            Signal(
+                severity=match.severity,
+                kind=match.kind,
+                line=line,
+                context=behind + ahead,
+                source_file=source_file,
+                source_line=source_line,
+            )
+        )
+    return signals
+
+
 class Oracle:
     def __init__(self, device: Device, package: str | None = None,
                  platform: "platforms.Platform | str | None" = None) -> None:
@@ -151,41 +198,10 @@ class Oracle:
             new_lines = lines[offset:]
             self._cursor = total
 
-        signals: list[Signal] = []
-        for i, line in enumerate(new_lines):
-            match = self.platform.classify(line)  # first match wins, one per line
-            if match is None:
-                continue
-            ahead = new_lines[i : i + _CONTEXT_AHEAD]
-            behind = new_lines[max(0, i - _CONTEXT_BEHIND) : i]
-            source_file, source_line = self._extract_location(ahead)
-            signals.append(
-                Signal(
-                    severity=match.severity,
-                    kind=match.kind,
-                    line=line,
-                    context=behind + ahead,
-                    source_file=source_file,
-                    source_line=source_line,
-                )
-            )
-        return signals
+        return classify_lines(new_lines, self.platform)
 
     def _extract_location(self, lines: list[str]) -> tuple[str | None, int | None]:
-        """First source location in these lines that points at real app code.
-
-        React Native stacks are full of frames inside `node_modules` and inside
-        the generated Metro bundle; pointing a report at those would be worse
-        than pointing it nowhere, so they are skipped rather than accepted as a
-        first match.
-        """
-        for ln in lines:
-            for m in self.platform.location_re.finditer(ln):
-                raw = m.group(1)
-                if platforms.is_ignored_source(raw):
-                    continue
-                return self.platform.normalize_source_path(raw), int(m.group(2))
-        return None, None
+        return extract_location(lines, self.platform)
 
     def restart(self) -> None:
         """Re-attach the stream to the app's current process.
