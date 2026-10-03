@@ -62,10 +62,39 @@ BINDERFS = Path("/dev/binderfs")
 
 
 def binder_state() -> str:
-    """"ok" | "no-devices" | "no-module" — how far binder is from usable."""
+    """"ok" | "no-devices" | "no-module" | "absent" — how far binder is from usable.
+
+    "absent" is the one no setup can fix: the running kernel has binder neither
+    built in (binderfs would be a registered filesystem) nor as a module on
+    disk to load. Arch's stock and Omarchy kernels are like this. Only booting
+    another kernel helps, so the console must not offer a setup button for it.
+    """
     if BINDER_NODE.exists() or (BINDERFS / "binder-control").exists():
         return "ok"
-    return "no-devices" if Path("/sys/module/binder_linux").exists() else "no-module"
+    if Path("/sys/module/binder_linux").exists():
+        return "no-devices"
+    if _binder_builtin() or _binder_module_on_disk():
+        return "no-module"
+    return "absent"
+
+
+def _binder_builtin() -> bool:
+    try:
+        return any(line.split()[-1] == "binder"
+                   for line in Path("/proc/filesystems").read_text().splitlines())
+    except (OSError, IndexError):
+        return False
+
+
+def _binder_module_on_disk() -> bool:
+    try:
+        r = subprocess.run(["modinfo", "-n", "binder_linux"],
+                           capture_output=True, timeout=10)
+    except (OSError, subprocess.TimeoutExpired):
+        # No modinfo to ask: assume a module may exist rather than ruling the
+        # sandbox out on a machine that could run it.
+        return True
+    return r.returncode == 0
 
 
 @dataclass(frozen=True)
@@ -84,6 +113,12 @@ class SandboxStatus:
     @property
     def problem(self) -> str | None:
         """One line saying why we cannot start, or None if we can."""
+        if self.binder == "absent":
+            # First, because nothing below it matters: starting Docker on a
+            # kernel with no binder only moves the failure to container boot.
+            return ("This kernel has no binder driver, so the sandbox cannot run "
+                    "on it. Use the emulator instead: it boots with no window, so "
+                    "only Gremlin can drive it.")
         if not self.docker:
             return ("Docker is not installed. The sandbox is a container; install "
                     "Docker Engine, or use a phone or an emulator instead.")

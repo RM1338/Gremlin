@@ -474,7 +474,8 @@ async def api_devices() -> JSONResponse:
             # Whether that problem is one the console can fix itself, with a
             # button and the desktop's own password dialog, instead of handing
             # the developer a modprobe line to paste into a terminal.
-            "can_setup": box.binder != "ok" and sandbox.can_self_setup(),
+            "can_setup": box.binder in ("no-module", "no-devices")
+                         and sandbox.can_self_setup(),
             "setup_cmd": f"sudo {sandbox.SETUP_SCRIPT}",
         },
     })
