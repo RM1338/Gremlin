@@ -43,7 +43,7 @@ try:
     sandbox.ensure_installed(CFG)
     raise AssertionError("should have refused: no project at scribe_root")
 except RuntimeError as e:
-    assert "not installed in the sandbox" in str(e), e
+    assert "is not installed on localhost:5555" in str(e), e
     assert "adb -s" in str(e), "the refusal has to name the manual way out"
 
 # --- absent, with a project: builds and installs, reporting each step --------
@@ -78,3 +78,20 @@ assert len(notes) >= 2 and any("building" in n for n in notes), notes
 import shutil
 shutil.rmtree(tmp)
 print("sandbox install: OK")
+
+# --- which devices count as Gremlin's own -----------------------------------
+# The sandbox always; an emulator only when it has no window; a phone never.
+from gremlin import emulator
+_real = emulator.has_window
+try:
+    emulator.has_window = lambda s: False
+    assert sandbox.owns_device("emulator-5554")
+    emulator.has_window = lambda s: True
+    assert not sandbox.owns_device("emulator-5554")
+    emulator.has_window = lambda s: None   # cannot tell: treat as someone's
+    assert not sandbox.owns_device("emulator-5554")
+    assert sandbox.owns_device(sandbox.SERIAL)
+    assert not sandbox.owns_device("RZCY607P0TL")
+finally:
+    emulator.has_window = _real
+print("owns_device: OK")

@@ -300,13 +300,26 @@ def stop() -> None:
     _docker("rm", "-f", CONTAINER, timeout=60)
 
 
-def ensure_installed(cfg, on_status=None) -> None:
-    """Put the app in the sandbox, because a container starts with no apps in it.
+def owns_device(serial: str | None) -> bool:
+    """Whether `serial` is a device that exists only for Gremlin to drive.
 
-    Sandbox only, and that restriction is the whole safety argument: a container
-    is guaranteed fresh, so a missing package there means "not installed yet".
-    On a phone or an emulator it more likely means the target is wrong, and
-    building someone's project uninvited is not the answer to that.
+    The sandbox container, or a headless emulator: the sandbox's stand-in on a
+    kernel without binder, with no window anyone could use. A phone, or an
+    emulator with a window, is someone's, and is never installed into.
+    """
+    from . import emulator
+    return is_sandbox(serial) or (emulator.is_emulator(serial)
+                                  and emulator.has_window(serial) is False)
+
+
+def ensure_installed(cfg, on_status=None) -> None:
+    """Put the app on a Gremlin-owned device, which starts with no apps in it.
+
+    Owned devices only (`owns_device`), and that restriction is the whole safety
+    argument: a sandbox or headless emulator starts clean, so a missing package
+    there means "not installed yet". On a phone, or an emulator someone is
+    using, it more likely means the target is wrong, and building someone's
+    project uninvited is not the answer to that.
 
     Raises RuntimeError with something worth reading; the caller decides whether
     that becomes a `sys.exit` or a line in the browser.
@@ -327,19 +340,19 @@ def ensure_installed(cfg, on_status=None) -> None:
     root = Path(cfg.scribe_root)
     if not (root / "android").is_dir():
         raise RuntimeError(
-            f"{cfg.package} is not installed in the sandbox, and there is no app "
+            f"{cfg.package} is not installed on {cfg.serial}, and there is no app "
             f"project at {root} to build it from. "
             f"Install it yourself: adb -s {cfg.serial} install -r <apk>")
-    say(f"{cfg.package} is not in the sandbox \u2014 building {root.name}\u2026")
+    say(f"{cfg.package} is not on {cfg.serial} \u2014 building {root.name}\u2026")
     try:
         apk = platforms.by_name(cfg.platform).build(root)
-        say(f"installing {apk.name} into the sandbox\u2026")
+        say(f"installing {apk.name} into {cfg.serial}\u2026")
         subprocess.run(["adb", "-s", cfg.serial, "install", "-r", str(apk)],
                        check=True, timeout=600)
     except (subprocess.CalledProcessError, subprocess.TimeoutExpired,
             FileNotFoundError) as e:
         raise RuntimeError(
-            f"could not install {cfg.package} into the sandbox: {e}") from e
+            f"could not install {cfg.package} into {cfg.serial}: {e}") from e
     say(f"installed {cfg.package} into {cfg.serial}")
 
 

@@ -268,9 +268,9 @@ def main() -> None:
     cfg.serial = args.serial or serial
 
     try:
-        if sbx.is_sandbox(cfg.serial):
-            # A container starts with no apps in it, so the target has to be
-            # built and pushed before there is anything to explore.
+        if sbx.owns_device(cfg.serial):
+            # A container or headless emulator starts with no apps in it, so the
+            # target has to be built and pushed before there is anything to explore.
             try:
                 sbx.ensure_installed(cfg, on_status=print)
             except RuntimeError as e:

@@ -116,7 +116,7 @@ def _start_run() -> None:
             # sandbox, so this tried to build and install a *website* into a
             # container and failed with "debtcalculatorpro.com is not installed
             # in the sandbox". The platform decides, not the stale serial.
-            if _cfg.platform != "web" and sandbox.is_sandbox(_cfg.serial):
+            if _cfg.platform != "web" and sandbox.owns_device(_cfg.serial):
                 # A container starts empty, so there is nothing to explore until
                 # the target is built and pushed into it. The CLI has always done
                 # this; the console used to launch a package that was not there.
