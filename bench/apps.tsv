@@ -1,0 +1,13 @@
+# Benchmark apps: F-Droid's Flutter apps that build from source, run offline and
+# need no account, server or special hardware. Commit is the one F-Droid built.
+# id	repo	commit	subdir	prep (optional shell command, run in subdir)
+com.derdilla.bloodPressureApp	https://github.com/derdilla/blood-pressure-monitor-fl.git	ec7e45b0387948c2d86a899c9731dc799270f8bf	app
+github.rikodot.kardi_notes	https://github.com/rikodot/kardi_notes_app	2f9c2ffb65ec	.
+me.ahmetcetinkaya.whph	https://github.com/ahmet-cetinkaya/whph	25cf9b7e7e76e10c256521837fdd5ebff1fe9797	src	sed -i -e 's/fvm //' ../scripts/generate_gen_files.sh && mise exec flutter@3.32.0 -- bash ../scripts/generate_gen_files.sh
+de.quantumphysique.trale	https://github.com/QuantumPhysique/trale.git	ebea45d12e15	app
+com.vicolo.chrono	https://github.com/vicolo-dev/chrono.git	69fdb1bedf82	.
+org.zerodogg.migraineLog	https://codeberg.org/mglog/MigraineLog.git	f78b7685c310	.
+design.codeux.authpass.fdroid	https://github.com/authpass/authpass	2d0366a02d76	authpass
+com.ripster.sossoldi	https://github.com/RIP-Comm/sossoldi	9134e10576a3	.
+de.jepfa.personaltasklogger	https://github.com/jenspfahl/EverydayTasks.git	4a762a14a445	.
+com.nathanatos.Cuppa	https://github.com/ncosgray/cuppa_mobile.git	b684ffcca118	.
