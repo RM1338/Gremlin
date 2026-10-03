@@ -547,8 +547,9 @@ async def api_emulator_start(request: Request) -> JSONResponse:
         body = {}
     def work() -> None:
         global _emulator
-        started = emulator.Emulator.start(
-            body.get("avd"), headless=bool(body.get("headless")))
+        # Always headless: the console offers no way to show the window, so
+        # nobody can reach the device except through the run.
+        started = emulator.Emulator.start(body.get("avd"), headless=True)
         _emulator = started
         _cfg.serial = started.serial
 

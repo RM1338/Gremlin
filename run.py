@@ -174,7 +174,7 @@ def _boot_emulator(args) -> tuple["emu.Emulator", str]:
         print("  A cold boot can take 20-30 minutes. Once up, it stays up: "
               "re-run with the emulator still running and Gremlin adopts it.")
     try:
-        started = emu.Emulator.start(name, headless=args.headless)
+        started = emu.Emulator.start(name, headless=not args.show_emulator)
     except (RuntimeError, TimeoutError) as e:
         # The emulator refusing to start is an environment problem the developer
         # can fix (disk, KVM, a missing image) — report it, don't stack-trace.
@@ -209,8 +209,11 @@ def main() -> None:
                     help="boot an emulator for this run instead of using a connected device")
     ap.add_argument("--avd", default=None, help="which AVD to boot (implies --emulator)")
     ap.add_argument("--avds", action="store_true", help="list available AVDs and exit")
-    ap.add_argument("--headless", action="store_true",
-                    help="boot the emulator with no window (for CI or over SSH)")
+    ap.add_argument("--show-emulator", action="store_true",
+                    help="give the emulator a window, for debugging it; by default "
+                         "it has none, so only Gremlin can drive it")
+    # The old opt-in, now the default. Still accepted so scripts keep working.
+    ap.add_argument("--headless", action="store_true", help=argparse.SUPPRESS)
     ap.add_argument("--keep-emulator", action="store_true",
                     help="leave the emulator running after the run finishes")
     args = ap.parse_args()

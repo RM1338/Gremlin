@@ -166,6 +166,23 @@ def running_emulators() -> list[str]:
     return [s for s, _ in _adb_devices() if s.startswith("emulator-")]
 
 
+def has_window(serial: str) -> bool | None:
+    """Whether a running emulator has a desktop window; None if we cannot tell.
+
+    The emulator names its own discovery file, which is keyed by its pid, and
+    the pid's command line says whether it was started with -no-window. A
+    caller that needs isolation treats None as "has one".
+    """
+    try:
+        out = subprocess.run(["adb", "-s", serial, "emu", "avd", "discoverypath"],
+                             capture_output=True, text=True, timeout=10).stdout
+        pid = re.search(r"pid_(\d+)\.ini", out).group(1)
+        argv = Path(f"/proc/{pid}/cmdline").read_bytes().split(b"\0")
+    except (OSError, subprocess.TimeoutExpired, AttributeError):
+        return None
+    return b"-no-window" not in argv
+
+
 def _adb_devices() -> list[tuple[str, str]]:
     """(serial, state) for every device adb can see."""
     try:
@@ -189,7 +206,7 @@ class Emulator:
 
     @classmethod
     def start(cls, avd: str | None = None, *, timeout: float = BOOT_TIMEOUT,
-              headless: bool = False, reuse: bool = True) -> "Emulator":
+              headless: bool = True, reuse: bool = True) -> "Emulator":
         """Boot `avd` (or the first one defined) and wait until it is usable.
 
         Returns once the system reports `sys.boot_completed` *and* the package
@@ -210,13 +227,21 @@ class Emulator:
 
         if reuse:
             for serial in running_emulators():
+                # A windowed emulator is not adopted for a headless boot: reusing
+                # it would hand the run a device someone can click on.
+                if headless and has_window(serial) is not False:
+                    continue
                 if _is_booted(serial):
                     return cls(serial=serial, avd=avd, process=None)
 
         before = {s for s, _ in _adb_devices()}
         cmd = [status.emulator, "-avd", avd, "-no-snapshot-save", "-no-boot-anim"]
         if headless:
-            # No window — for CI, or a dev box driving this over SSH.
+            # No window, by default. The emulator is the sandbox's stand-in, and
+            # a window on the desktop is an input path into the device under
+            # test: a stray click mid-run lands taps the trace never recorded,
+            # and the run stops being reproducible. Only Gremlin's adb verbs
+            # should reach it; a window is for debugging the emulator itself.
             cmd += ["-no-window", "-gpu", "swiftshader_indirect"]
 
         if not kvm_available():

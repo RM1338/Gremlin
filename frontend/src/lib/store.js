@@ -230,8 +230,8 @@ async function pollBoot() {
   }
 }
 
-export async function startEmulator(avd, { headless = false } = {}) {
-  return bootDevice("/api/emulator/start", { avd, headless }, "Booting emulator…");
+export async function startEmulator(avd) {
+  return bootDevice("/api/emulator/start", { avd }, "Booting emulator…");
 }
 
 /* Boot a containerised Android instance — the option for a developer with no
