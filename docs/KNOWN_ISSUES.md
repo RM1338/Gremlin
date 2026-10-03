@@ -136,7 +136,7 @@ diff would beat regex if it is worth the effort, but the gates matter more.
 
 ## G4 — The vision model may not be load-bearing, and it has never been measured
 
-**Severity:** high · **Status:** harness built, **measurement pending** · **Threatens:** M2, and the motivation for Objective 2
+**Severity:** high · **Status:** measured on the bench fixture (B = C there); open for real apps · **Threatens:** M2, and the motivation for Objective 2
 
 `Explorer._choose_and_execute()` honours the model's chosen action **only** when
 it targets an as-yet-untapped control; otherwise it takes `untapped[0]` itself.
@@ -186,6 +186,34 @@ python -m gremlin.eval --project ~/Projects/gremlin-bench-flutter --actions 30 \
 **The number still does not exist.** Running this needs a device, and until it
 has been run over ≥5 seeds the question G4 asks remains open — the harness is
 not the finding. Do not cite the model's contribution until this table exists.
+
+**First measurement, 3 Oct 2026** — `gremlin_bench` (Flutter), headless emulator,
+30 actions, 5 seeds per arm. Gemini's free quota was spent, so the hosted arm
+is Groq `qwen/qwen3.8-27b` (3 valid seeds before its daily token limit; the two
+cut short were excluded) and the local arm is `qwen3-vl:4b-instruct` on Ollama,
+on an RTX 3050 6 GB laptop (~1.3 s per decision).
+
+| Arm | Screens | Bugs (of 3) | s / run |
+|---|---|---|---|
+| Monkey | 1.0 ± 0.0 | 0.0 ± 0.0 | 30 |
+| Coverage-only, as first measured | 5.0 ± 0.0 | 2.0 ± 0.0 | 79 |
+| Groq qwen3.8-27b (n=3) | 5.0 ± 0.0 | 2.7 ± 0.6 | 404 |
+| Local qwen3-vl:4b, as first measured | 5.0 ± 0.0 | 2.8 ± 0.5 | 143 |
+| **Coverage-only, after the fix below** | 5.0 ± 0.0 | **3.0 ± 0.0** | — |
+| **Local qwen3-vl:4b, after the fix below** | 5.0 ± 0.0 | **3.0 ± 0.0** | — |
+
+The first reading looked like C > B: coverage-only never found the
+`main.dart:127` crash, the model arms usually did. It was an engine bug, not
+the model. Coverage took `untapped[0]` in screen order, which on a Flutter page
+is the app bar's back arrow; it left the Crash page with "Trigger crash" still
+untapped and never returned, then reported "every reachable control tapped".
+With leave-the-screen controls ordered last (`Explorer._frontier`), both arms
+find all three defects in 5/5 seeds.
+
+**So on this fixture B = C.** The model contributes nothing measurable here —
+which is G15 as much as G4: five screens and eight controls leave no ordering
+decision that costs anything. The question stays open for apps with deep
+navigation, text entry and budgets that run out before coverage does.
 
 ---
 

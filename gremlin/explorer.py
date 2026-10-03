@@ -176,7 +176,11 @@ class Explorer:
                     # out of frontier, and the user pressing stop. Only the first
                     # is "complete".
                     if self._complete:
-                        print(f"  ✓ coverage complete at step {step}: every reachable control tapped")
+                        left = self._untapped_left()
+                        print(f"  ✓ coverage complete at step {step}: " + (
+                            "every reachable control tapped" if not left else
+                            f"nothing left here, but {left} control(s) seen on "
+                            "other screens were never tapped"))
                     else:
                         print(f"  ■ stopped at step {step}: {self._run_note}")
                     break
@@ -205,7 +209,11 @@ class Explorer:
         controls_seen = sum(len(s) for s in self._seen_elems.values())
         note = self._run_note
         if not note and self._complete:
-            note = f"Coverage complete — tapped every reachable control ({controls_tapped} across {self.memory.count} screens)."
+            left = self._untapped_left()
+            note = (f"Coverage complete — tapped every reachable control ({controls_tapped} across {self.memory.count} screens)."
+                    if not left else
+                    f"Coverage stopped — {controls_tapped} controls tapped across {self.memory.count} screens; "
+                    f"{left} seen on screens it left were never tapped.")
         return {
             "steps": len(self.trace),
             "screens": self.memory.count,
@@ -279,7 +287,7 @@ class Explorer:
         known = len(seen)
         for e in clickable:
             seen.add(self._elem_key(e))
-        untapped = [e for e in clickable if self._elem_key(e) not in tapped]
+        untapped = self._frontier(clickable, tapped)
         # Scrolling earned its keep: give this screen its scroll budget back, so
         # a page that keeps revealing controls keeps being walked down.
         if len(seen) > known:
@@ -386,6 +394,31 @@ class Explorer:
             what = a.target_label or a.text or a.direction or ""
             parts.append(f"{a.verb} {what}".strip())
         return " -> ".join(parts)
+
+    def _frontier(self, clickable: list[Element], tapped: set) -> list[Element]:
+        """This screen's untapped controls, in the order coverage takes them.
+
+        Controls that leave the screen go last. The app bar's back arrow sits
+        top-left, so in screen order it came first: coverage tapped it, left a
+        page whose other controls were never tapped, and never returned, since
+        the button that opens the page had already been tapped. On the bench
+        fixture that hid "Trigger crash" from every coverage-only run.
+        """
+        untapped = [e for e in clickable if self._elem_key(e) not in tapped]
+        return sorted(untapped, key=self._leaves_screen)
+
+    def _untapped_left(self) -> int:
+        """Controls seen on some screen and never tapped there. Stopping while
+        this is non-zero is "nothing left to tap here", not full coverage."""
+        return sum(len(seen - self._tapped.get(sid, set()))
+                   for sid, seen in self._seen_elems.items())
+
+    # Labels of controls whose only job is to leave the current screen.
+    _LEAVE_LABELS = ("back", "navigate up", "close", "dismiss")
+
+    @classmethod
+    def _leaves_screen(cls, e: Element) -> bool:
+        return (e.label or "").strip().lower() in cls._LEAVE_LABELS
 
     @staticmethod
     def _elem_key(e: Element):
