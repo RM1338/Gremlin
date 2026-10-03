@@ -504,7 +504,7 @@ cannot also serve as the coverage benchmark.
 
 ## G16 — Perceptual hashing under-counts screens on the web
 
-**Severity:** medium · **Status:** open · **Threatens:** M2 on web, the coverage metric
+**Severity:** medium · **Status:** fixed 3 Oct 2026 · **Threatens:** M2 on web, the coverage metric
 
 `ScreenMemory` identifies a screen by the perceptual hash of its screenshot, at
 `phash_same_threshold = 6`. That threshold was chosen against phone screenshots,
@@ -527,3 +527,26 @@ single-page apps that never change it. Both are already computed each step —
 URL — so this is a change to what `ScreenMemory.observe` is given, not new
 machinery. It touches the Android path too, which is why it is not being done
 in the same change as the platform itself.
+
+**Fixed 3 Oct 2026, in two steps.** `6d184b4` stopped using pixels on the web:
+`WebDriver.screen_key()` hands `ScreenMemory` an explicit identity, and Android,
+which passes none, is untouched. That key was the URL alone, which fixed
+scrolling but scored a single-page app as one screen, and its `split("#")` also
+collapsed every view of a hash-routed app (`#/cart`) into one.
+
+The key is now the route plus the view's own name: `route_of()` keeps `#/` and
+`#!` fragments and drops plain anchors, and the visible `<h1>` text is appended.
+The label set, the other candidate named above, was tried and rejected: on a page
+with animations and "View More" toggles it changes almost every step. A heading
+names the view rather than listing its contents, so it holds still. Headings are
+read twice 250 ms apart and only those unchanged are kept, so a typewriter hero
+does not mint a screen per frame.
+
+Measured on the `web_explore_test` fixture (one URL, six views): **6** distinct
+screens, against 1 for the URL key. A typewriter page scrolled four times keeps
+one key.
+
+Still not covered: an SPA whose views share one `<h1>`, or have none, is keyed
+by route alone and under-counts as before. That is the honest direction to err
+in, because a merged screen only unions its control lists, while a split one
+resets the tapped-set and loops the agent.

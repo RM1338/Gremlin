@@ -63,6 +63,43 @@ def origin_of(url: str) -> str:
     return (urlparse(url).hostname or url).lower()
 
 
+def route_of(url: str) -> str:
+    """The URL with in-page anchors dropped and hash routes kept.
+
+    `#pricing` scrolls the same page, so it is not a different screen. `#/cart`
+    and `#!/cart` are a hash router's whole idea of where it is, and dropping
+    them collapsed every view of such an app into one.
+    """
+    base, _, frag = url.partition("#")
+    return base + "#" + frag if frag.startswith(("/", "!")) else base
+
+
+# The view's own name, for `screen_key`. Visible means rendered, not on screen:
+# a heading scrolled out of view still names the page, and testing the viewport
+# would make every scroll a new screen again. The page is read twice, 250 ms
+# apart, and only headings identical in both reads are kept — a typewriter or
+# rotating hero headline is mid-change on most reads and drops out, where
+# keeping it would mint a new screen per frame of the animation.
+_HEADINGS_JS = """
+async () => {
+  const read = () => {
+    const out = [];
+    for (const el of document.querySelectorAll('h1,[role=heading][aria-level="1"]')) {
+      if (!el.getClientRects().length) continue;
+      if (getComputedStyle(el).visibility === 'hidden') continue;
+      const t = (el.innerText || '').replace(/\\s+/g, ' ').trim().slice(0, 80);
+      if (t) out.push(t);
+    }
+    return out;
+  };
+  const first = read();
+  await new Promise(r => setTimeout(r, 250));
+  const second = new Set(read());
+  return [...new Set(first.filter(t => second.has(t)))].slice(0, 3);
+}
+"""
+
+
 def config_for(url: str, **kw) -> Config:
     """Build a Config aimed at a web target.
 
@@ -421,24 +458,30 @@ class WebDriver:
     def screen_key(self) -> str:
         """What makes this page *this* page, for visited-screen memory.
 
-        The URL, and only the URL. Deliberately not pixels (every scroll is a
-        different image of the same page) and deliberately not the set of
-        control labels either: that was tried, and on a page with animations,
-        modals and a "View More" toggle the label set changes almost every step,
-        so nearly every step counted as a screen never seen before — which reset
-        the per-screen tapped-set and sent the agent round the same three links
-        for its whole budget.
+        The route, plus the page's own name for the view it is showing.
+        Deliberately not pixels (every scroll is a different image of the same
+        page) and deliberately not the set of control labels either: that was
+        tried, and on a page with animations, modals and a "View More" toggle
+        the label set changes almost every step, so nearly every step counted
+        as a screen never seen before — which reset the per-screen tapped-set
+        and sent the agent round the same three links for its whole budget.
 
-        The cost is honest and worth stating: a single-page app that never
-        changes its URL counts as one screen. Coverage is unharmed, because the
-        controls of every view accumulate against that one id and each is still
-        tapped once; it is the *distinct screens* metric that understates, which
-        docs/KNOWN_ISSUES.md G16 already says is not quotable for web.
+        The route alone counted a single-page app that never changes its URL as
+        one screen (docs/KNOWN_ISSUES.md G16). The view's `<h1>` is what tells
+        those views apart, and it is far steadier than the control set: it names
+        the view rather than listing what is in it, so a toggle that reveals
+        more controls leaves it alone. Only headings that held still across two
+        reads count (see `_HEADINGS_JS`), so a typewriter hero cannot churn it.
         """
         try:
-            return self._page.url.split("#")[0]
+            route = route_of(self._page.url)
         except Exception:
             return self.start_url
+        try:
+            heads = self._page.evaluate(_HEADINGS_JS)
+        except Exception:
+            heads = []
+        return route + "".join(f" | {h}" for h in heads)
 
     def elements(self) -> list[Element]:
         """The DOM's answer to the accessibility tree."""

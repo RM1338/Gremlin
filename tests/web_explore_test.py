@@ -10,6 +10,7 @@ repositories of their own, and a page with four planted defects is small enough
 to state inline, where the assertions can be read against it.
 """
 import http.server
+import json
 import shutil
 import socketserver
 import sys
@@ -103,13 +104,54 @@ def test_web_exploration_finds_planted_defects():
 
         # Exploration, not just detection: the coverage policy should have moved
         # off the first screen and tapped more than one control.
-        trace = (run_dir / "trace.json").read_text()
-        assert '"steps"' in trace
+        trace = json.loads((run_dir / "trace.json").read_text())
+        assert trace["steps"]
         assert len(bugs) >= 4, [b.kind for b in bugs]
+
+        # G16: one URL, six views. Keyed by URL alone this was 1 screen.
+        assert trace["distinct_screens"] == 6, trace["distinct_screens"]
     finally:
         httpd.shutdown()
         shutil.rmtree(root, ignore_errors=True)
         shutil.rmtree(run_dir, ignore_errors=True)
+
+
+def test_route_keeps_hash_routes_and_drops_anchors():
+    assert web.route_of("http://a.dev/x?q=1#pricing") == "http://a.dev/x?q=1"
+    assert web.route_of("http://a.dev/#/cart") == "http://a.dev/#/cart"
+    assert web.route_of("http://a.dev/#!/cart") == "http://a.dev/#!/cart"
+    assert web.route_of("http://a.dev/") == "http://a.dev/"
+
+
+TYPEWRITER = """<!doctype html>
+<h1 id="hero"></h1><h1>About</h1>
+<p style="height:3000px">tall</p>
+<script>
+const words = "I build things that break";
+let i = 0;
+setInterval(() => { hero.textContent = words.slice(0, i++ % words.length); }, 40);
+</script>
+"""
+
+
+def test_screen_key_ignores_typewriter_and_scroll():
+    """A churning hero headline or a scroll must not mint new screens."""
+    root = Path(tempfile.mkdtemp(prefix="gremlin-web-"))
+    (root / "index.html").write_text(TYPEWRITER)
+    httpd, port = _serve(root)
+    d = web.WebDriver(web.config_for(f"http://127.0.0.1:{port}/index.html#top"))
+    try:
+        d.prepare()
+        d.relaunch(d.origin, d.start_url)
+        keys = set()
+        for _ in range(4):
+            keys.add(d.screen_key())
+            d.scroll("down")
+        assert keys == {f"http://127.0.0.1:{port}/index.html | About"}, keys
+    finally:
+        d.close()
+        httpd.shutdown()
+        shutil.rmtree(root, ignore_errors=True)
 
 
 def test_config_for_derives_origin():
@@ -221,6 +263,7 @@ def test_mailto_link_is_not_a_broken_request():
 
 
 if __name__ == "__main__":
+    test_route_keeps_hash_routes_and_drops_anchors()
     test_config_for_derives_origin()
     test_mailto_link_is_not_a_broken_request()
     test_web_target_is_never_installed_on_a_device()
@@ -229,5 +272,6 @@ if __name__ == "__main__":
     test_resource_404_never_reaches_the_oracle()
     test_source_location_survives_the_url()
     test_favicon_noise_is_not_a_bug()
+    test_screen_key_ignores_typewriter_and_scroll()
     test_web_exploration_finds_planted_defects()
     print("ok")
