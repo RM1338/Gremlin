@@ -32,6 +32,10 @@ from .screen_memory import ScreenMemory
 from .vision import ModelError
 
 
+class DeviceLost(RuntimeError):
+    """The device stopped answering mid-run: an emulator crash, a cable pulled."""
+
+
 # Optional callback so the dashboard can watch a run live. Given (event, payload).
 EventSink = Callable[[str, dict], None]
 
@@ -161,6 +165,12 @@ class Explorer:
                     self._run_note = str(e)
                     print(f"  !! model unavailable at step {step}: {e}")
                     break
+                except DeviceLost as e:
+                    # Same reasoning: the bugs already found are real, so end the
+                    # run and report them rather than dying with a traceback.
+                    self._run_note = str(e)
+                    print(f"  !! device lost at step {step}: {e}")
+                    break
                 if self._done:
                     # _done is set by two different things now: coverage running
                     # out of frontier, and the user pressing stop. Only the first
@@ -222,6 +232,11 @@ class Explorer:
 
         # ---- Observe ----
         shot = self.dev.screenshot()
+        if not shot:
+            # adb returns nothing at all once the device is gone; without this
+            # the empty bytes reached the image decoder and the run died there.
+            raise DeviceLost(f"{self.cfg.serial or 'the device'} returned no "
+                             "screenshot; it has stopped responding")
         shot_path = self.cfg.run_dir / "screens" / f"step_{step:03d}.png"
         shot_path.write_bytes(shot)
         h = self.memory.phash(shot)

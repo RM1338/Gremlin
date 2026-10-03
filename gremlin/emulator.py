@@ -161,6 +161,63 @@ def list_avds() -> list[str]:
     return names
 
 
+def _headless_gpu() -> str:
+    """The renderer for a windowless emulator: the real GPU wherever there is one.
+
+    Every software renderer the emulator ships (swiftshader_indirect, swangle,
+    lavapipe) segfaulted its RenderThread two steps into the Flutter bench
+    fixture, every run, and disabling guest Vulkan did not change that. `host`
+    renders through the machine's GPU without needing a window, and ran the
+    same fixture to coverage-complete. SwiftShader remains the fallback where
+    there is no GPU render node, and GREMLIN_EMULATOR_GPU overrides both.
+    """
+    override = os.environ.get("GREMLIN_EMULATOR_GPU")
+    if override:
+        return override
+    has_gpu = any(Path("/dev/dri").glob("renderD*")) if Path("/dev/dri").is_dir() else False
+    return "host" if has_gpu else "swiftshader_indirect"
+
+
+def _avd_dir(avd: str) -> Path:
+    home = os.environ.get("ANDROID_AVD_HOME") or Path.home() / ".android" / "avd"
+    return Path(home) / f"{avd}.avd"
+
+
+def _pid_alive(pid: int) -> bool:
+    """Running, and not a zombie: a zombie has exited and holds nothing."""
+    try:
+        stat = Path(f"/proc/{pid}/stat").read_text()
+    except OSError:
+        return False
+    # The state follows the parenthesised command name, which may contain spaces.
+    return stat.rsplit(")", 1)[-1].split()[0] != "Z"
+
+
+def clear_stale_lock(avd: str) -> bool:
+    """Remove an AVD's lock left by an emulator that is no longer running.
+
+    A crashed emulator leaves `hardware-qemu.ini.lock` naming its pid. While
+    that pid exists the emulator refuses the AVD ("Running multiple emulators
+    with the same AVD ..."), and a zombie still exists: the console that
+    started the emulator reaps it only when it next polls, so one crash made
+    the AVD unbootable until the console was restarted. Returns whether a
+    lock was cleared.
+    """
+    lock = _avd_dir(avd) / "hardware-qemu.ini.lock"
+    try:
+        pid = int(lock.read_text().strip("\0 \n"))
+    except (OSError, ValueError, IndexError):
+        return False
+    if _pid_alive(pid):
+        return False
+    for name in ("hardware-qemu.ini.lock", "multiinstance.lock"):
+        try:
+            (_avd_dir(avd) / name).unlink()
+        except OSError:
+            pass
+    return True
+
+
 def running_emulators() -> list[str]:
     """Serials of emulators currently visible to adb."""
     return [s for s, _ in _adb_devices() if s.startswith("emulator-")]
@@ -234,6 +291,7 @@ class Emulator:
                 if _is_booted(serial):
                     return cls(serial=serial, avd=avd, process=None)
 
+        clear_stale_lock(avd)
         before = {s for s, _ in _adb_devices()}
         cmd = [status.emulator, "-avd", avd, "-no-snapshot-save", "-no-boot-anim"]
         if headless:
@@ -242,7 +300,7 @@ class Emulator:
             # test: a stray click mid-run lands taps the trace never recorded,
             # and the run stops being reproducible. Only Gremlin's adb verbs
             # should reach it; a window is for debugging the emulator itself.
-            cmd += ["-no-window", "-gpu", "swiftshader_indirect"]
+            cmd += ["-no-window", "-gpu", _headless_gpu()]
 
         if not kvm_available():
             # QEMU emulates the guest CPU instruction by instruction. That is far
