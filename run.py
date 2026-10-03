@@ -7,7 +7,8 @@
     python run.py --steps 40
 
 No phone? With nothing attached, Gremlin starts the sandbox container itself,
-installs the app into it, and drives it exactly as it would a physical device:
+installs the app into it, and drives it exactly as it would a physical device.
+Where the sandbox cannot run (a kernel without binder), it boots an AVD instead:
 
     python run.py --project ~/Projects/MyApp    # no device -> sandbox
     python run.py --sandbox             # sandbox even with a phone attached
@@ -86,12 +87,18 @@ def _attached() -> list[str]:
     return [s for s, state in emu._adb_devices() if state == "device"]
 
 
-def _device_plan(args, attached: list[str], sandbox_running: bool) -> str:
+def _device_plan(args, attached: list[str], sandbox_running: bool,
+                 sandbox_ok: bool = True, have_avd: bool = False) -> str:
     """Which device this run gets: emulator | attached | adopt-sandbox | start-sandbox.
 
     Split out from the doing so the order of precedence can be read (and tested)
     in one place. An explicit --serial always wins, because the one thing worse
     than no device is booting a container over the phone someone asked for.
+
+    With nothing attached the sandbox is preferred, but it needs binder, which
+    many kernels do not have. There, an AVD is the answer rather than an error:
+    `sandbox_ok` says the sandbox could start, `have_avd` that one could boot.
+    Only an explicit --sandbox insists on the container regardless.
     """
     if args.emulator or args.avd:
         return "emulator"
@@ -101,8 +108,10 @@ def _device_plan(args, attached: list[str], sandbox_running: bool) -> str:
         # Already up: adopt it rather than paying another boot, exactly as a
         # running emulator is adopted. --keep-sandbox is what leaves one up.
         return "adopt-sandbox"
-    if args.sandbox or not attached:
+    if args.sandbox:
         return "start-sandbox"
+    if not attached:
+        return "emulator" if have_avd and not sandbox_ok else "start-sandbox"
     return "attached"
 
 
@@ -113,7 +122,14 @@ def _resolve_device(args) -> tuple[object | None, str | None]:
     or a container someone left running — because killing those is not ours to do.
     """
     attached = _attached()
-    plan = _device_plan(args, attached, sbx.running())
+    # Only asked when it can change the answer: both checks shell out.
+    idle = not (attached or args.serial or args.sandbox or args.emulator or args.avd)
+    plan = _device_plan(args, attached, sbx.running(),
+                        sandbox_ok=not idle or sbx.status().problem is None,
+                        have_avd=idle and bool(emu.sdk_status().avds))
+    if plan == "emulator" and not (args.emulator or args.avd):
+        print("no device attached and the sandbox cannot start here "
+              "— booting an emulator instead")
 
     if plan == "attached":
         return None, None

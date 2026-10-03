@@ -2,7 +2,7 @@
 
 The rule that matters: nothing may boot a container over a device someone
 explicitly asked for, and nothing may pay a second boot for a container that is
-already up. Everything else is "no device? use the sandbox".
+already up. Everything else is "no device? use the sandbox", or an AVD where it cannot run.
 
 Run from the project root:  python -m tests.device_plan_test
 """
@@ -23,6 +23,13 @@ PHONE = ["R58M12345"]
 
 # --- nothing attached: the sandbox is the answer, not an error --------------
 assert _device_plan(args(), [], False) == "start-sandbox"
+
+# --- no binder on this kernel: an AVD stands in, unless --sandbox insists ---
+assert _device_plan(args(), [], False, sandbox_ok=False, have_avd=True) == "emulator"
+assert _device_plan(args(), [], False, sandbox_ok=False, have_avd=False) == "start-sandbox"
+assert _device_plan(args(), [], False, sandbox_ok=True, have_avd=True) == "start-sandbox"
+assert _device_plan(args(sandbox=True), [], False, sandbox_ok=False, have_avd=True) == "start-sandbox"
+assert _device_plan(args(), PHONE, False, sandbox_ok=False, have_avd=True) == "attached"
 
 # --- a phone is there: use it, don't boot anything --------------------------
 assert _device_plan(args(), PHONE, False) == "attached"

@@ -43,7 +43,13 @@ if [ -n "$attached" ]; then
   printf '%s' "$attached" | grep -q unauthorized \
     && echo "    -> accept the 'Allow USB debugging?' prompt on the phone"
 else
-  echo "    none attached — plug in a phone, or start an emulator from the console"
+  avds=$("${ANDROID_HOME:-$HOME/Android/Sdk}/emulator/emulator" -list-avds 2>/dev/null | grep . | paste -sd, -) || true
+  if [ -n "$avds" ]; then
+    echo "    none attached — emulator available ($avds): boot it from the console,"
+    echo "    or a headless run boots it by itself (python run.py --emulator)"
+  else
+    echo "    none attached — plug in a phone, or start an emulator from the console"
+  fi
 fi
 
 # The console is a built SPA; rebuild only when a source file is newer than it.
