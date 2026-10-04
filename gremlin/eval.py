@@ -50,6 +50,7 @@ from .oracle import Oracle
 from .screen_memory import ScreenMemory
 from .targets import target_for_project
 from . import platforms
+from .sandbox import owns_device
 
 
 @dataclass
@@ -88,7 +89,21 @@ def _stats(xs: "list[float]") -> dict:
     }
 
 
+def _fresh_app(cfg: Config) -> None:
+    """Wipe the app's data before a run, on a device that exists only for us.
+
+    Without it a benchmark's runs are not independent: notes or tasks one arm
+    created are already there when the next arm starts, which hands it screens
+    for free. `pm clear` is safe only on the sandbox or Gremlin's own headless
+    emulator; on a phone it would wipe someone's real data, so there it is
+    skipped and state carries over, as `Device.relaunch` documents.
+    """
+    if cfg.platform != "web" and owns_device(cfg.serial):
+        Device(cfg.serial)._shell("pm", "clear", cfg.package)
+
+
 def run_gremlin(cfg: Config, label: str = "gremlin", seed: int = 0) -> Result:
+    _fresh_app(cfg)
     t0 = time.time()
     explorer = Explorer(cfg)
     bugs = explorer.run()
@@ -132,6 +147,7 @@ def run_monkey(cfg: Config, actions: int, throttle_ms: int = 400,
     arms observed the same way, which is the only way the screens column means
     anything.
     """
+    _fresh_app(cfg)
     t0 = time.time()
     dev = Device(cfg.serial)
     dev.prepare()
