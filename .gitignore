@@ -30,3 +30,4 @@ skills-lock.json
 
 # design-tool canvas state (Kombai)
 .kombai/
+bench/build-results.tsv
