@@ -92,8 +92,10 @@ In the order they unblock each other:
    whether the model earns its cost on apps with real navigation.
 2. **Grow the set to 30–50 apps** (proposal Obj. 2b). Needs a disk plan:
    group apps by Flutter version, and budget ~2 GB per pinned SDK.
-3. **G2 — make Gate 3 deterministic** (replay other bugs' traces instead of a
-   random 15-step probe). Starts Obj. 3, due 30 Oct.
+3. **G2 — re-verify the deterministic Gate 3.** Implemented 25 Aug (609fb5f:
+   replays other bugs' traces, stable keys). Still to do: re-run the 21 Aug
+   autofix end to end and exercise it on the benchmark apps. Starts Obj. 3,
+   due 30 Oct.
 4. **G3** — strengthen the static guard; build the adversarial patch suite
    (M5: ≥95% of cheating patches rejected).
 5. **G12** — finish replacing gate 2's magic thresholds.

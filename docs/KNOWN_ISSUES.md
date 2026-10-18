@@ -58,7 +58,7 @@ arriving after a process change is still detected.
 
 ## G2 — Gate 3 can pass by not looking
 
-**Severity:** high · **Status:** open · **Threatens:** M4, M5, the safety claim
+**Severity:** high · **Status:** fixed in code 25 Aug 2026 (609fb5f); not yet re-run on the benchmark · **Threatens:** M4, M5, the safety claim
 
 Gates 1 and 2 are deterministic: replay a fixed trace, compare a hash. Gate 3
 (`gremlin/fixer.py`, the `probe_cfg` / `Explorer(probe_cfg)` block) instead runs
@@ -107,6 +107,17 @@ is to re-probe the **base** build whenever the gate is about to fail and drop
 any signal that reproduces there — a pre-existing defect is not breakage. That
 costs a probe run only on the failure path.
 
+
+**Fixed in code 25 Aug 2026 (609fb5f).** Gate 3 no longer runs a stochastic
+probe. It replays the run's other recorded bug traces (plus the fixed trace
+itself) and reports how many it replayed, so a pass on zero traces is visible
+as weak. Gate 1 and the baseline now compare `oracle.stable_key`, which keys a
+signal on its kind and message rather than `file:line`, so a patch that shifts
+lines can neither fake a fixed bug nor invent a new one. The fixer also
+reinstalls the base build afterwards, so the next run does not explore a patched
+APK. **Not yet re-verified:** the 21 Aug autofix has not been re-run end to end
+with this gate, and the nine-app benchmark has not exercised it. Until it has,
+treat the fix as implemented, not proven.
 ---
 
 ## G3 — The static guard is a speed bump, not a guard
